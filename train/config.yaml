@@ -1,0 +1,39 @@
+seed: 42
+
+model:
+  vocab_size: 32000
+  dim: 384
+  hidden_dim: 1152
+  layers: 5
+  heads: 6
+  latent_tokens: 48
+  router_ratio: 0.1
+  ssm_state_size: 192
+  max_seq_len: 8192
+
+training:
+  batch_size: 1
+  micro_batch_size: 1
+  steps: 20
+  lr: 0.0003
+  weight_decay: 0.01
+  grad_clip: 1.0
+  log_every: 5
+  checkpoint_dir: checkpoints
+
+loss:
+  main_weight: 1.0
+  router_weight: 1.0
+
+evaluation:
+  batch_size: 1
+  warmup_steps: 2
+  benchmark_steps: 8
+  device: auto
+  scaling_lengths: [1024, 2048, 4096, 8192]
+  niah:
+    seq_len: 8192
+    needle_depths: [0.1, 0.3, 0.5, 0.7, 0.9]
+    needle_token: 7
+    answer_token: 8
+    pad_token: 0
