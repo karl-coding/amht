@@ -29,6 +29,20 @@ python3 -m pip install -r requirements.txt
 python3 train/train.py --config train/config.yaml --seq-len 8192
 ```
 
+## Train on CPU
+
+Use the smaller CPU preset to keep runtime and memory usage reasonable:
+
+```bash
+PYTHONUNBUFFERED=1 python3 train/train.py --config train/config_cpu.yaml --seq-len 4096 --device cpu
+```
+
+For a faster smoke test:
+
+```bash
+PYTHONUNBUFFERED=1 python3 train/train.py --config train/config_cpu.yaml --seq-len 2048 --steps 10 --device cpu
+```
+
 ## Evaluate
 
 Throughput:
@@ -53,6 +67,12 @@ All:
 
 ```bash
 python3 eval/benchmark.py --config train/config.yaml --task all --seq-len 8192
+```
+
+CPU eval:
+
+```bash
+python3 eval/benchmark.py --config train/config_cpu.yaml --task all --seq-len 4096 --device cpu
 ```
 
 ## Colab
