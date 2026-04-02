@@ -34,28 +34,38 @@ class AMHTBlock(nn.Module):
         router_ratio: float,
         state_size: int,
         attention_chunk_size: int,
+        block_size: int,
+        memory: LatentMemory,
     ) -> None:
         super().__init__()
         self.norm = nn.LayerNorm(dim)
         self.ssm = SSMBlock(dim, state_size)
-        self.router = SparseRouter(dim, heads, router_ratio, attention_chunk_size)
+        self.router = SparseRouter(dim, heads, router_ratio, attention_chunk_size, block_size)
         self.ff = nn.Sequential(
             nn.LayerNorm(dim),
             nn.Linear(dim, hidden_dim),
             nn.GELU(),
             nn.Linear(hidden_dim, dim),
         )
+        self.memory = memory
         self.router_ratio = router_ratio
 
-    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def forward(
+        self,
+        x: torch.Tensor,
+        latent_state: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         h = self.norm(x)
-        scores = self.router.gate(h)
-        mixed = self.ssm(h) + self.router.sparse_attention(h)
-        x = x + mixed * scores.unsqueeze(-1)
+        latent_read = self.memory.read(latent_state)
+        h_with_memory = h + latent_read
+        block_scores, token_mask, selected_blocks = self.router.block_gate(h_with_memory)
+        mixed = self.ssm(h_with_memory) + self.router.routed_sparse_attention(h_with_memory, token_mask, selected_blocks)
+        x = x + mixed
         x = x + self.ff(x)
-        router_mean = scores.mean()
+        latent_state = self.memory.write(latent_state, x)
+        router_mean = block_scores.mean()
         router_penalty = (router_mean - self.router_ratio).pow(2)
-        return x, router_penalty, router_mean
+        return x, latent_state, router_penalty, router_mean
 
 
 class AMHTModel(nn.Module):
@@ -78,6 +88,8 @@ class AMHTModel(nn.Module):
                     router_ratio=float(model_cfg["router_ratio"]),
                     state_size=int(model_cfg["ssm_state_size"]),
                     attention_chunk_size=int(model_cfg.get("attention_chunk_size", 256)),
+                    block_size=int(model_cfg.get("block_size", 128)),
+                    memory=self.memory,
                 )
                 for _ in range(int(model_cfg["layers"]))
             ]
@@ -91,12 +103,13 @@ class AMHTModel(nn.Module):
             raise ValueError(f"Sequence length {seq_len} exceeds max_seq_len {self.max_seq_len}")
 
         x = self.token_emb(tokens) + self.pos_emb[:, :seq_len]
-        x = x + self.memory(batch)
+        latent_state = self.memory.init_state(batch_size=batch)
+        x = x + self.memory.read(latent_state)
 
         router_penalty = x.new_zeros(())
         router_mean = x.new_zeros(())
         for block in self.blocks:
-            x, penalty, mean_score = block(x)
+            x, latent_state, penalty, mean_score = block(x, latent_state)
             router_penalty = router_penalty + penalty
             router_mean = router_mean + mean_score
 

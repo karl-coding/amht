@@ -9,6 +9,7 @@ Project layout:
 - `train/train.py`
 - `train/config.yaml`
 - `train/config_amht_8k.yaml`
+- `train/config_amht_8k_tuned.yaml`
 - `train/config_transformer_8k.yaml`
 - `train/distributed.py`
 - `data/dataset.py`
@@ -35,6 +36,12 @@ Explicit AMHT 8K preset:
 
 ```bash
 PYTHONUNBUFFERED=1 python3 train/train.py --config train/config_amht_8k.yaml --seq-len 8192 --device cuda
+```
+
+Tuned AMHT 8K preset for longer GPU optimization runs:
+
+```bash
+PYTHONUNBUFFERED=1 python3 train/train.py --config train/config_amht_8k_tuned.yaml --seq-len 8192 --steps 500 --device cuda --seed 42
 ```
 
 ## Train on CPU
@@ -122,6 +129,17 @@ This produces:
 - `results/amht_8k_eval.json`
 - `results/transformer_8k_train.jsonl`
 - `results/transformer_8k_eval.json`
+
+To run the tuned 500-step AMHT train+benchmark path on GPU:
+
+```bash
+bash scripts/run_amht_8k_tuned_gpu.sh 500 cuda 42
+```
+
+This produces:
+
+- `results/amht_8k_tuned_seed42_train.jsonl`
+- `results/amht_8k_tuned_seed42_eval.json`
 
 Optional Google Drive checkpoint output in Colab:
 

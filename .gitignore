@@ -1,2 +1,10 @@
 *.pt
 checkpoints/
+__pycache__/
+*.pyc
+.DS_Store
+results/
+scripts/__pycache__/
+eval/__pycache__/
+model/__pycache__/
+train/__pycache__/
