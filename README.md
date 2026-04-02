@@ -8,6 +8,8 @@ Project layout:
 - `model/memory.py`
 - `train/train.py`
 - `train/config.yaml`
+- `train/config_amht_8k.yaml`
+- `train/config_transformer_8k.yaml`
 - `train/distributed.py`
 - `data/dataset.py`
 - `data/tokenizer.py`
@@ -27,6 +29,12 @@ python3 -m pip install -r requirements.txt
 
 ```bash
 python3 train/train.py --config train/config.yaml --seq-len 8192
+```
+
+Explicit AMHT 8K preset:
+
+```bash
+PYTHONUNBUFFERED=1 python3 train/train.py --config train/config_amht_8k.yaml --seq-len 8192 --device cuda
 ```
 
 ## Train on CPU
@@ -99,6 +107,21 @@ For a more conservative Colab T4 preset, use:
 PYTHONUNBUFFERED=1 python train/train.py --config train/config_colab_t4.yaml --seq-len 8192 --steps 3 --device cuda
 python eval/benchmark.py --config train/config_colab_t4.yaml --task all --seq-len 8192 --device cuda
 ```
+
+## GPU Comparison
+
+To compare AMHT against the local-attention Transformer baseline on GPU:
+
+```bash
+bash scripts/run_compare_gpu.sh 200 cuda
+```
+
+This produces:
+
+- `results/amht_8k_train.jsonl`
+- `results/amht_8k_eval.json`
+- `results/transformer_8k_train.jsonl`
+- `results/transformer_8k_eval.json`
 
 Optional Google Drive checkpoint output in Colab:
 

@@ -71,6 +71,10 @@ def build_model(cfg: dict) -> nn.Module:
     raise SystemExit(f"Unsupported model.architecture={architecture}")
 
 
+def model_name(cfg: dict) -> str:
+    return str(cfg["model"].get("architecture", "amht")).lower()
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train an AMHT model")
     parser.add_argument("--config", default="train/config.yaml", help="Path to YAML config")
@@ -94,6 +98,7 @@ def train() -> None:
     device = choose_device(args.device)
     maybe_init_distributed()
     model = build_model(cfg).to(device)
+    architecture = model_name(cfg)
 
     train_cfg = cfg["training"]
     loss_cfg = cfg["loss"]
@@ -108,6 +113,7 @@ def train() -> None:
     checkpoint_dir = Path(checkpoint_root)
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
     log_path = Path(args.log_jsonl) if args.log_jsonl else checkpoint_dir / f"train_seq{args.seq_len}.jsonl"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
 
     total_steps = args.steps if args.steps is not None else int(train_cfg["steps"])
     start_step = 0
@@ -188,7 +194,7 @@ def train() -> None:
             with log_path.open("a", encoding="utf-8") as handle:
                 handle.write(json.dumps(metrics) + "\n")
 
-    checkpoint_path = checkpoint_dir / f"amht_seq{args.seq_len}.pt"
+    checkpoint_path = checkpoint_dir / f"{architecture}_seq{args.seq_len}.pt"
     torch.save(
         {
             "model": model.state_dict(),

@@ -138,11 +138,13 @@ def main() -> None:
         rendered = json.dumps(outputs[0], indent=2)
         print(rendered)
         if args.save_json:
+            Path(args.save_json).parent.mkdir(parents=True, exist_ok=True)
             Path(args.save_json).write_text(rendered + "\n", encoding="utf-8")
     else:
         rendered = json.dumps(outputs, indent=2)
         print(rendered)
         if args.save_json:
+            Path(args.save_json).parent.mkdir(parents=True, exist_ok=True)
             Path(args.save_json).write_text(rendered + "\n", encoding="utf-8")
 
 
