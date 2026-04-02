@@ -25,6 +25,7 @@ import yaml
 from eval.niah import benchmark_niah
 from eval.scaling import benchmark_scaling
 from model.amht import AMHTModel, synthetic_batch
+from model.transformer import LocalTransformerModel
 
 
 def load_config(path: str) -> dict:
@@ -51,6 +52,15 @@ def choose_device(requested: str | None = None) -> torch.device:
     return torch.device("cpu")
 
 
+def build_model(cfg: dict) -> torch.nn.Module:
+    architecture = str(cfg["model"].get("architecture", "amht")).lower()
+    if architecture == "amht":
+        return AMHTModel(cfg)
+    if architecture == "transformer":
+        return LocalTransformerModel(cfg)
+    raise SystemExit(f"Unsupported model.architecture={architecture}")
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Benchmark AMHT")
     parser.add_argument("--config", default="train/config.yaml", help="Path to YAML config")
@@ -58,6 +68,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--task", default="throughput", choices=["throughput", "niah", "scaling", "all"])
     parser.add_argument("--seq-len", type=int, default=8192, help="Primary context length")
     parser.add_argument("--device", default="auto", help="cpu, cuda, mps, or auto")
+    parser.add_argument("--save-json", default=None, help="Optional path to save benchmark JSON output")
     return parser.parse_args()
 
 
@@ -67,7 +78,7 @@ def synchronize(device: torch.device) -> None:
 
 
 @torch.no_grad()
-def benchmark_throughput(model: AMHTModel, cfg: dict, seq_len: int, device: torch.device) -> dict:
+def benchmark_throughput(model: torch.nn.Module, cfg: dict, seq_len: int, device: torch.device) -> dict:
     eval_cfg = cfg["evaluation"]
     batch = synthetic_batch(
         batch_size=int(eval_cfg["batch_size"]),
@@ -107,7 +118,7 @@ def main() -> None:
 
     set_seed(int(cfg.get("seed", 42)))
     device = choose_device(args.device)
-    model = AMHTModel(cfg).to(device)
+    model = build_model(cfg).to(device)
     if args.checkpoint:
         checkpoint = torch.load(args.checkpoint, map_location=device)
         state_dict = checkpoint.get("model", checkpoint)
@@ -124,9 +135,15 @@ def main() -> None:
         outputs.append(benchmark_scaling(model, cfg, device, benchmark_throughput))
 
     if len(outputs) == 1:
-        print(json.dumps(outputs[0], indent=2))
+        rendered = json.dumps(outputs[0], indent=2)
+        print(rendered)
+        if args.save_json:
+            Path(args.save_json).write_text(rendered + "\n", encoding="utf-8")
     else:
-        print(json.dumps(outputs, indent=2))
+        rendered = json.dumps(outputs, indent=2)
+        print(rendered)
+        if args.save_json:
+            Path(args.save_json).write_text(rendered + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":

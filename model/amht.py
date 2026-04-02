@@ -111,7 +111,7 @@ def synthetic_batch(batch_size: int, seq_len: int, vocab_size: int, device: torc
 
 
 def compute_loss(
-    model: AMHTModel,
+    model: nn.Module,
     tokens: torch.Tensor,
     main_weight: float,
     router_weight: float,
