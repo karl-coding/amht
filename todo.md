@@ -178,7 +178,7 @@
 ## Next
 
 - [ ] Replace synthetic data with a real dataset pipeline.
-- [ ] Tighten router regularization toward `0.1`.
-- [ ] Improve NIAH retrieval behavior.
+- [ ] Tighten router regularization toward `0.1` for longer CPU/GPU runs.
+- [ ] Improve harder-curriculum NIAH retrieval behavior beyond the current partial-depth saturation.
 - [ ] Add checkpoint resume.
 - [ ] Add proper distributed training.
