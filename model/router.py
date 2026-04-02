@@ -14,7 +14,7 @@ except ImportError as exc:  # pragma: no cover
 class SparseRouter(nn.Module):
     """Router gating plus chunked sparse local attention."""
 
-    def __init__(self, dim: int, heads: int, router_ratio: float) -> None:
+    def __init__(self, dim: int, heads: int, router_ratio: float, chunk_size: int = 256) -> None:
         super().__init__()
         if dim % heads != 0:
             raise ValueError(f"dim={dim} must be divisible by heads={heads}")
@@ -26,6 +26,7 @@ class SparseRouter(nn.Module):
         self.heads = heads
         self.head_dim = dim // heads
         self.router_ratio = router_ratio
+        self.chunk_size = chunk_size
         self._reset_parameters()
 
     def _reset_parameters(self) -> None:
@@ -43,7 +44,7 @@ class SparseRouter(nn.Module):
         v = self.v_proj(x).view(batch, seq_len, self.heads, self.head_dim).transpose(1, 2)
 
         context = max(1, int(seq_len * self.router_ratio))
-        chunk_size = min(256, seq_len)
+        chunk_size = min(self.chunk_size, seq_len)
         outputs = []
         for start in range(0, seq_len, chunk_size):
             end = min(start + chunk_size, seq_len)

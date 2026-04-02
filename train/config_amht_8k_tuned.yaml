@@ -1,0 +1,47 @@
+seed: 42
+
+model:
+  architecture: amht
+  vocab_size: 32000
+  dim: 256
+  hidden_dim: 768
+  layers: 4
+  heads: 4
+  latent_tokens: 32
+  router_ratio: 0.1
+  ssm_state_size: 128
+  attention_chunk_size: 512
+  max_seq_len: 8192
+
+training:
+  batch_size: 1
+  micro_batch_size: 1
+  steps: 500
+  lr: 0.0002
+  weight_decay: 0.01
+  grad_clip: 1.0
+  log_every: 10
+  checkpoint_dir: checkpoints
+
+loss:
+  mode: final_token
+  main_weight: 1.0
+  router_weight: 2.0
+
+data:
+  dataset_type: retrieval
+
+evaluation:
+  batch_size: 1
+  warmup_steps: 1
+  benchmark_steps: 4
+  device: auto
+  scaling_lengths: [1024, 2048, 4096, 8192]
+  niah:
+    seq_len: 8192
+    needle_depths: [0.05, 0.15, 0.3, 0.5, 0.7, 0.85, 0.95]
+    key_start: 100
+    value_start: 1000
+    num_pairs: 16
+    num_keys: 128
+    pad_token: 0

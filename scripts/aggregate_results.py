@@ -49,6 +49,36 @@ def collect_metric(runs: list[dict[str, dict]], task: str, field: str) -> list[f
     return values
 
 
+def collect_scaling_metric(runs: list[dict[str, dict]], seq_len: int, field: str) -> list[float]:
+    values = []
+    for run in runs:
+        scaling = run.get("scaling", {}).get("results", [])
+        for item in scaling:
+            if int(item.get("seq_len", -1)) == seq_len and isinstance(item.get(field), (int, float)):
+                values.append(float(item[field]))
+    return values
+
+
+def collect_niah_depth_metric(runs: list[dict[str, dict]], depth_index: int) -> list[float]:
+    values = []
+    for run in runs:
+        niah = run.get("niah", {})
+        by_depth = niah.get("accuracy_by_depth", [])
+        if depth_index < len(by_depth) and isinstance(by_depth[depth_index], (int, float)):
+            values.append(float(by_depth[depth_index]))
+    return values
+
+
+def print_markdown_table(title: str, headers: list[str], rows: list[list[str]]) -> None:
+    print()
+    print(title)
+    print()
+    print("| " + " | ".join(headers) + " |")
+    print("| " + " | ".join(["---"] * len(headers)) + " |")
+    for row in rows:
+        print("| " + " | ".join(row) + " |")
+
+
 def main() -> None:
     args = parse_args()
     amht_runs = [load_results(path) for path in sorted(glob.glob(args.glob_amht))]
@@ -71,6 +101,50 @@ def main() -> None:
         amht_pair = mean_std(amht_values)
         baseline_pair = mean_std(baseline_values)
         print(f"{name:32} {fmt_pair(*amht_pair):>24} {fmt_pair(*baseline_pair):>24}")
+
+    first_amht_niah = amht_runs[0].get("niah", {})
+    depths = list(first_amht_niah.get("needle_depths", []))
+    if depths:
+        print()
+        print("Per-depth NIAH")
+        print(f"{'depth':10} {'amht mean+-std':>24} {args.baseline_name + ' mean+-std':>24}")
+        print("-" * 64)
+        niah_rows = []
+        for index, depth in enumerate(depths):
+            amht_pair = mean_std(collect_niah_depth_metric(amht_runs, index))
+            baseline_pair = mean_std(collect_niah_depth_metric(baseline_runs, index))
+            print(f"{depth:<10} {fmt_pair(*amht_pair):>24} {fmt_pair(*baseline_pair):>24}")
+            niah_rows.append([str(depth), fmt_pair(*amht_pair), fmt_pair(*baseline_pair)])
+        print_markdown_table(
+            "Markdown NIAH Table",
+            ["Depth", "AMHT mean+-std", f"{args.baseline_name} mean+-std"],
+            niah_rows,
+        )
+
+    scaling_lengths = sorted(
+        {
+            int(item.get("seq_len"))
+            for run in amht_runs + baseline_runs
+            for item in run.get("scaling", {}).get("results", [])
+            if "seq_len" in item
+        }
+    )
+    if scaling_lengths:
+        print()
+        print("Per-length Scaling Throughput")
+        print(f"{'seq_len':10} {'amht mean+-std':>24} {args.baseline_name + ' mean+-std':>24}")
+        print("-" * 64)
+        scaling_rows = []
+        for seq_len in scaling_lengths:
+            amht_pair = mean_std(collect_scaling_metric(amht_runs, seq_len, "tokens_per_second"))
+            baseline_pair = mean_std(collect_scaling_metric(baseline_runs, seq_len, "tokens_per_second"))
+            print(f"{seq_len:<10} {fmt_pair(*amht_pair):>24} {fmt_pair(*baseline_pair):>24}")
+            scaling_rows.append([str(seq_len), fmt_pair(*amht_pair), fmt_pair(*baseline_pair)])
+        print_markdown_table(
+            "Markdown Scaling Table",
+            ["Seq Len", "AMHT mean+-std", f"{args.baseline_name} mean+-std"],
+            scaling_rows,
+        )
 
 
 if __name__ == "__main__":
