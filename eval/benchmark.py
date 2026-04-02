@@ -68,6 +68,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--task", default="throughput", choices=["throughput", "niah", "scaling", "all"])
     parser.add_argument("--seq-len", type=int, default=8192, help="Primary context length")
     parser.add_argument("--device", default="auto", help="cpu, cuda, mps, or auto")
+    parser.add_argument("--seed", type=int, default=None, help="Optional random seed override")
     parser.add_argument("--save-json", default=None, help="Optional path to save benchmark JSON output")
     return parser.parse_args()
 
@@ -116,7 +117,8 @@ def main() -> None:
             f"--seq-len {args.seq_len} exceeds config model.max_seq_len={cfg['model']['max_seq_len']}"
         )
 
-    set_seed(int(cfg.get("seed", 42)))
+    seed = int(args.seed if args.seed is not None else cfg.get("seed", 42))
+    set_seed(seed)
     device = choose_device(args.device)
     model = build_model(cfg).to(device)
     if args.checkpoint:
@@ -135,12 +137,17 @@ def main() -> None:
         outputs.append(benchmark_scaling(model, cfg, device, benchmark_throughput))
 
     if len(outputs) == 1:
-        rendered = json.dumps(outputs[0], indent=2)
+        payload: dict | list = outputs[0]
+        if isinstance(payload, dict):
+            payload["seed"] = seed
+        rendered = json.dumps(payload, indent=2)
         print(rendered)
         if args.save_json:
             Path(args.save_json).parent.mkdir(parents=True, exist_ok=True)
             Path(args.save_json).write_text(rendered + "\n", encoding="utf-8")
     else:
+        for item in outputs:
+            item["seed"] = seed
         rendered = json.dumps(outputs, indent=2)
         print(rendered)
         if args.save_json:

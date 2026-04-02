@@ -81,6 +81,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seq-len", type=int, default=8192, help="Training context length")
     parser.add_argument("--steps", type=int, default=None, help="Optional override for training steps")
     parser.add_argument("--device", default="auto", help="cpu, cuda, mps, or auto")
+    parser.add_argument("--seed", type=int, default=None, help="Optional random seed override")
     parser.add_argument("--resume", default=None, help="Optional checkpoint path to resume from")
     parser.add_argument("--log-jsonl", default=None, help="Optional JSONL path for training metrics")
     return parser.parse_args()
@@ -94,7 +95,8 @@ def train() -> None:
             f"--seq-len {args.seq_len} exceeds config model.max_seq_len={cfg['model']['max_seq_len']}"
         )
 
-    set_seed(int(cfg.get("seed", 42)))
+    seed = int(args.seed if args.seed is not None else cfg.get("seed", 42))
+    set_seed(seed)
     device = choose_device(args.device)
     maybe_init_distributed()
     model = build_model(cfg).to(device)
@@ -185,6 +187,7 @@ def train() -> None:
                 "device": str(device),
                 "seq_len": args.seq_len,
                 "config": args.config,
+                "seed": seed,
             }
             print(
                 f"step={step} total_loss={losses.total.item():.4f} "
@@ -206,6 +209,7 @@ def train() -> None:
         checkpoint_path,
     )
     print(f"device={device}")
+    print(f"seed={seed}")
     print(f"log_jsonl={log_path}")
     print(f"saved_checkpoint={checkpoint_path}")
 
