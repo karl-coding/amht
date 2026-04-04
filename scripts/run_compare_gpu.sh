@@ -15,7 +15,6 @@ mkdir -p results
 
 .venv/bin/python eval/benchmark.py \
   --config train/config_amht_8k.yaml \
-  --checkpoint checkpoints/amht_seq8192.pt \
   --task all \
   --seq-len 8192 \
   --device "${DEVICE}" \
@@ -30,7 +29,6 @@ mkdir -p results
 
 .venv/bin/python eval/benchmark.py \
   --config train/config_transformer_8k.yaml \
-  --checkpoint checkpoints/transformer_seq8192.pt \
   --task all \
   --seq-len 8192 \
   --device "${DEVICE}" \

@@ -93,7 +93,7 @@ python3 eval/benchmark.py --config train/config_cpu.yaml --task all --seq-len 40
 CPU eval with a trained checkpoint:
 
 ```bash
-python3 eval/benchmark.py --config train/config_cpu.yaml --checkpoint checkpoints/amht_seq4096.pt --task niah --seq-len 4096 --device cpu
+python3 eval/benchmark.py --config train/config_cpu.yaml --task niah --seq-len 4096 --device cpu
 ```
 
 ## Colab
@@ -148,6 +148,8 @@ from google.colab import drive
 drive.mount('/content/drive')
 %env AMHT_CHECKPOINT_DIR=/content/drive/MyDrive/amht_checkpoints
 ```
+
+Training and evaluation both resolve checkpoints from `AMHT_CHECKPOINT_DIR` when it is set, so benchmark commands do not need a hardcoded `--checkpoint` path.
 
 ## Validated Runs
 

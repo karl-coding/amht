@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -61,10 +62,34 @@ def build_model(cfg: dict) -> torch.nn.Module:
     raise SystemExit(f"Unsupported model.architecture={architecture}")
 
 
+def resolve_checkpoint_path(checkpoint_arg: str | None, cfg: dict, seq_len: int) -> Path | None:
+    checkpoint_root = Path(os.environ.get("AMHT_CHECKPOINT_DIR", cfg["training"]["checkpoint_dir"]))
+    architecture = str(cfg["model"].get("architecture", "amht")).lower()
+    inferred = checkpoint_root / f"{architecture}_seq{seq_len}.pt"
+
+    if checkpoint_arg is None:
+        return inferred
+
+    candidate = Path(checkpoint_arg)
+    if candidate.is_absolute() or candidate.exists():
+        return candidate
+
+    # If the caller passed an old relative path like checkpoints/amht_seq8192.pt while
+    # AMHT_CHECKPOINT_DIR points elsewhere, prefer the current checkpoint root with the same filename.
+    alternate = checkpoint_root / candidate.name
+    if alternate.exists():
+        return alternate
+    return candidate
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Benchmark AMHT")
     parser.add_argument("--config", default="train/config.yaml", help="Path to YAML config")
-    parser.add_argument("--checkpoint", default=None, help="Optional model checkpoint to load")
+    parser.add_argument(
+        "--checkpoint",
+        default=None,
+        help="Optional checkpoint path. If omitted, load from AMHT_CHECKPOINT_DIR or training.checkpoint_dir.",
+    )
     parser.add_argument("--task", default="throughput", choices=["throughput", "niah", "scaling", "all"])
     parser.add_argument("--seq-len", type=int, default=8192, help="Primary context length")
     parser.add_argument("--device", default="auto", help="cpu, cuda, mps, or auto")
@@ -121,11 +146,17 @@ def main() -> None:
     set_seed(seed)
     device = choose_device(args.device)
     model = build_model(cfg).to(device)
-    if args.checkpoint:
-        checkpoint = torch.load(args.checkpoint, map_location=device)
+    checkpoint_path = resolve_checkpoint_path(args.checkpoint, cfg, args.seq_len)
+    if checkpoint_path is not None:
+        if not checkpoint_path.exists():
+            raise SystemExit(
+                f"Checkpoint not found: {checkpoint_path}. "
+                "Pass --checkpoint explicitly or set AMHT_CHECKPOINT_DIR to the directory used during training."
+            )
+        checkpoint = torch.load(checkpoint_path, map_location=device)
         state_dict = checkpoint.get("model", checkpoint)
         model.load_state_dict(state_dict)
-        print(json.dumps({"loaded_checkpoint": args.checkpoint}))
+        print(json.dumps({"loaded_checkpoint": str(checkpoint_path)}))
     model.eval()
 
     outputs = []

@@ -112,23 +112,32 @@ def save_architecture_placeholder(outdir: Path) -> None:
     plt.close(fig)
 
 
-def plot_niah_by_depth(outdir: Path, amht_runs: list[dict[str, dict]], baseline_runs: list[dict[str, dict]]) -> None:
-    depths = [float(x) for x in amht_runs[0]["niah"]["needle_depths"]]
-    amht_mean, amht_std, baseline_mean, baseline_std = [], [], [], []
+def plot_niah_by_depth(
+    outdir: Path,
+    fast_runs: list[dict[str, dict]],
+    accurate_runs: list[dict[str, dict]],
+    baseline_runs: list[dict[str, dict]],
+) -> None:
+    depths = [float(x) for x in fast_runs[0]["niah"]["needle_depths"]]
+    fast_mean, fast_std, accurate_mean, accurate_std, baseline_mean, baseline_std = [], [], [], [], [], []
 
     for idx, _ in enumerate(depths):
-        m, s = mean_std(collect_niah_depth(amht_runs, idx))
-        amht_mean.append(m)
-        amht_std.append(s)
+        m, s = mean_std(collect_niah_depth(fast_runs, idx))
+        fast_mean.append(m)
+        fast_std.append(s)
+        m, s = mean_std(collect_niah_depth(accurate_runs, idx))
+        accurate_mean.append(m)
+        accurate_std.append(s)
         m, s = mean_std(collect_niah_depth(baseline_runs, idx))
         baseline_mean.append(m)
         baseline_std.append(s)
 
     x = np.arange(len(depths))
-    width = 0.36
+    width = 0.26
     fig, ax = plt.subplots(figsize=(8.5, 4.6))
-    ax.bar(x - width / 2, amht_mean, width, yerr=amht_std, label="AMHT", color="#355c7d", capsize=4)
-    ax.bar(x + width / 2, baseline_mean, width, yerr=baseline_std, label="Transformer", color="#f67280", capsize=4)
+    ax.bar(x - width, fast_mean, width, yerr=fast_std, label="AMHT-Fast", color="#355c7d", capsize=4)
+    ax.bar(x, accurate_mean, width, yerr=accurate_std, label="AMHT-Accurate", color="#6c5b7b", capsize=4)
+    ax.bar(x + width, baseline_mean, width, yerr=baseline_std, label="Transformer", color="#f67280", capsize=4)
     ax.set_xticks(x)
     ax.set_xticklabels([str(depth) for depth in depths])
     ax.set_ylim(0.0, 1.08)
@@ -141,25 +150,34 @@ def plot_niah_by_depth(outdir: Path, amht_runs: list[dict[str, dict]], baseline_
     plt.close(fig)
 
 
-def plot_scaling(outdir: Path, amht_runs: list[dict[str, dict]], baseline_runs: list[dict[str, dict]]) -> None:
+def plot_scaling(
+    outdir: Path,
+    fast_runs: list[dict[str, dict]],
+    accurate_runs: list[dict[str, dict]],
+    baseline_runs: list[dict[str, dict]],
+) -> None:
     seq_lens = sorted(
         {
             int(item["seq_len"])
-            for run in amht_runs + baseline_runs
+            for run in fast_runs + accurate_runs + baseline_runs
             for item in run.get("scaling", {}).get("results", [])
         }
     )
-    amht_mean, amht_std, baseline_mean, baseline_std = [], [], [], []
+    fast_mean, fast_std, accurate_mean, accurate_std, baseline_mean, baseline_std = [], [], [], [], [], []
     for seq_len in seq_lens:
-        m, s = mean_std(collect_scaling(amht_runs, seq_len))
-        amht_mean.append(m)
-        amht_std.append(s)
+        m, s = mean_std(collect_scaling(fast_runs, seq_len))
+        fast_mean.append(m)
+        fast_std.append(s)
+        m, s = mean_std(collect_scaling(accurate_runs, seq_len))
+        accurate_mean.append(m)
+        accurate_std.append(s)
         m, s = mean_std(collect_scaling(baseline_runs, seq_len))
         baseline_mean.append(m)
         baseline_std.append(s)
 
     fig, ax = plt.subplots(figsize=(8.2, 4.6))
-    ax.errorbar(seq_lens, amht_mean, yerr=amht_std, marker="o", linewidth=2, color="#355c7d", label="AMHT")
+    ax.errorbar(seq_lens, fast_mean, yerr=fast_std, marker="o", linewidth=2, color="#355c7d", label="AMHT-Fast")
+    ax.errorbar(seq_lens, accurate_mean, yerr=accurate_std, marker="^", linewidth=2, color="#6c5b7b", label="AMHT-Accurate")
     ax.errorbar(seq_lens, baseline_mean, yerr=baseline_std, marker="s", linewidth=2, color="#f67280", label="Transformer")
     ax.set_xlabel("Sequence length")
     ax.set_ylabel("Tokens / second")
@@ -214,11 +232,10 @@ def main() -> None:
     fast_runs = load_runs(args.glob_amht_fast)
     accurate_runs = load_runs(args.glob_amht_accurate)
     baseline_runs = load_runs(args.glob_transformer)
-    amht_runs = fast_runs + accurate_runs
 
     save_architecture_placeholder(outdir)
-    plot_niah_by_depth(outdir, amht_runs, baseline_runs)
-    plot_scaling(outdir, amht_runs, baseline_runs)
+    plot_niah_by_depth(outdir, fast_runs, accurate_runs, baseline_runs)
+    plot_scaling(outdir, fast_runs, accurate_runs, baseline_runs)
     plot_frontier(outdir, fast_runs, accurate_runs, baseline_runs)
 
     print(f"generated_figures={outdir}")

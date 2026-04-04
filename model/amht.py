@@ -36,11 +36,21 @@ class AMHTBlock(nn.Module):
         attention_chunk_size: int,
         block_size: int,
         memory: LatentMemory,
+        router_neighbor_radius: int = 0,
+        router_neighbor_bonus: float = 0.0,
     ) -> None:
         super().__init__()
         self.norm = nn.LayerNorm(dim)
         self.ssm = SSMBlock(dim, state_size)
-        self.router = SparseRouter(dim, heads, router_ratio, attention_chunk_size, block_size)
+        self.router = SparseRouter(
+            dim,
+            heads,
+            router_ratio,
+            attention_chunk_size,
+            block_size,
+            router_neighbor_radius,
+            router_neighbor_bonus,
+        )
         self.ff = nn.Sequential(
             nn.LayerNorm(dim),
             nn.Linear(dim, hidden_dim),
@@ -90,6 +100,8 @@ class AMHTModel(nn.Module):
                     attention_chunk_size=int(model_cfg.get("attention_chunk_size", 256)),
                     block_size=int(model_cfg.get("block_size", 128)),
                     memory=self.memory,
+                    router_neighbor_radius=int(model_cfg.get("router_neighbor_radius", 0)),
+                    router_neighbor_bonus=float(model_cfg.get("router_neighbor_bonus", 0.0)),
                 )
                 for _ in range(int(model_cfg["layers"]))
             ]

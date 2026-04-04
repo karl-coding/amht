@@ -24,7 +24,6 @@ for SEED in ${SEEDS}; do
 
   "${PYTHON_BIN}" eval/benchmark.py \
     --config train/config_amht_8k.yaml \
-    --checkpoint checkpoints/amht_seq8192.pt \
     --task all \
     --seq-len 8192 \
     --device "${DEVICE}" \
@@ -41,7 +40,6 @@ for SEED in ${SEEDS}; do
 
   "${PYTHON_BIN}" eval/benchmark.py \
     --config train/config_transformer_8k.yaml \
-    --checkpoint checkpoints/transformer_seq8192.pt \
     --task all \
     --seq-len 8192 \
     --device "${DEVICE}" \

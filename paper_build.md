@@ -41,6 +41,8 @@ python3 scripts/plot_paper_figures.py \
 
 The manuscript is written as a clean arXiv-style preprint draft based on the currently verified AMHT V2 results.
 
+For new benchmarks on the current main branch, use `scripts/run_v3_multiseed.sh`. The legacy `scripts/run_v2_multiseed.sh` is intentionally frozen so new runs are not written into old V2 filenames.
+
 Before submission, the highest-value improvements are:
 
 1. add author/affiliation information

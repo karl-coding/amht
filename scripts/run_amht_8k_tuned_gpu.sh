@@ -23,7 +23,6 @@ mkdir -p results
 
 "${PYTHON_BIN}" eval/benchmark.py \
   --config train/config_amht_8k_tuned.yaml \
-  --checkpoint checkpoints/amht_seq8192.pt \
   --task all \
   --seq-len 8192 \
   --device "${DEVICE}" \
