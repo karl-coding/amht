@@ -1,0 +1,311 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage[numbers]{natbib}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!60!black,
+  citecolor=blue!60!black,
+  urlcolor=blue!60!black
+}
+
+\title{Adaptive Memory Hybrid Transformer:\\Routed Hybrid Sequence Modeling for Long-Context Retrieval and Throughput}
+\author{Karl Coding\\Independent Research}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Long-context modeling remains constrained by the cost of attention over long sequences. Pure attention architectures provide strong token-level retrieval but scale poorly, while pure recurrent or state-space models improve efficiency at the cost of precise selective interaction. We present the Adaptive Memory Hybrid Transformer (AMHT), a hybrid long-context architecture that combines three computation paths: a state-space backbone for universal low-cost sequence processing, routed sparse attention for selective high-resolution interaction, and latent memory for compressed global communication. We further introduce AMHT V2, which replaces token-level routing with block-level routing and skips attention computation entirely for non-routed blocks. This converts the model from a hybrid in module composition into a hybrid in computation pathways. On an 8K synthetic long-context retrieval benchmark, AMHT V2 improves both efficiency and retrieval quality relative to a matched local-attention Transformer baseline. Across three seeds and two operating points, AMHT achieves $122{,}252 \pm 4{,}032$ tokens/s versus $96{,}123 \pm 4{,}098$ for the Transformer, reduces latency from $85.3$ ms to $67.1$ ms per step, and improves Needle-in-a-Haystack mean accuracy from $0.5238 \pm 0.0825$ to $0.8095 \pm 0.2151$. These results suggest that routed hybrid sequence models can preserve retrieval quality while improving long-context throughput when the routing policy controls actual attention computation rather than merely modulating its outputs.
+\end{abstract}
+
+\section{Introduction}
+Attention-based architectures remain the dominant paradigm for sequence modeling because they provide direct token-to-token interaction and strong retrieval behavior~\citep{vaswani2017attention}. Their main weakness is computational: long-context inference and training become expensive as attention is applied broadly across the sequence. In parallel, recurrent and state-space approaches offer favorable scaling but often struggle with the sharp selective interactions needed for retrieval-heavy workloads~\citep{gu2021combining,gu2022s4,dao2024mamba}.
+
+This tradeoff motivates hybrid architectures. A useful hybrid architecture should not merely concatenate multiple modules in a single layer. It should allocate different computations to different roles. In the long-context setting, this suggests a three-path decomposition:
+\begin{itemize}
+  \item a low-cost universal path that processes all tokens,
+  \item a selective high-resolution path used only when needed,
+  \item a compressed global path for long-range communication.
+\end{itemize}
+
+AMHT is designed around exactly this principle. The model combines a state-space model (SSM) backbone, sparse routed attention, and latent memory. The initial AMHT design established the functional combination of these ingredients, but still paid attention cost too broadly because attention was computed before routing sparsity was fully enforced. AMHT V2 addresses this limitation by routing at the block level and skipping attention entirely for non-routed blocks.
+
+The central claim of this work is that a routed hybrid architecture can improve long-context retrieval and throughput simultaneously when the routing mechanism controls actual computation rather than only post-hoc attention weighting.
+
+The contributions of this draft are:
+\begin{enumerate}
+  \item We formulate AMHT V2 as a three-path hybrid architecture with explicit division of labor between SSM dynamics, routed sparse attention, and latent compressed memory.
+  \item We implement block-level routing that limits sparse attention to selected blocks while keeping the SSM path active over the full sequence.
+  \item We evaluate AMHT against a matched local-attention Transformer baseline on an 8K synthetic retrieval benchmark and show consistent throughput and retrieval gains in the current setup.
+  \item We identify an explicit efficiency-quality frontier within AMHT, exposing useful fast and accurate operating points rather than a single fixed configuration.
+\end{enumerate}
+
+\section{Related Direction}
+This work is motivated by three broad families of long-context architectures.
+
+First, Transformers and their efficient variants provide direct interaction between tokens, which is especially useful for retrieval tasks~\citep{vaswani2017attention,child2019generating,beltagy2020longformer,dao2022flashattention}. Local and sparse attention methods reduce cost but still depend on attention as the primary mechanism for sequence interaction.
+
+Second, state-space and recurrent architectures improve scaling by replacing broad attention with compressed sequential dynamics~\citep{gu2021combining,gu2022s4,dao2024mamba}. These methods provide attractive throughput properties but can struggle on tasks that require exact selective recall.
+
+Third, memory-augmented architectures add explicit latent or compressed memory paths to improve long-range communication. AMHT builds on this idea but integrates memory with both recurrent dynamics and selective attention.
+
+The design target is not to replace all attention with recurrence, or vice versa. It is to assign each mechanism a coherent systems role:
+\begin{itemize}
+  \item SSM for default low-cost processing,
+  \item sparse attention for exceptions that require precise interaction,
+  \item latent memory for global cross-block communication.
+\end{itemize}
+
+\section{Architecture}
+
+\subsection{AMHT Overview}
+AMHT processes a sequence with three coupled paths:
+\begin{itemize}
+  \item \textbf{SSM backbone}: runs on every block and provides continuous recurrent state propagation,
+  \item \textbf{Routed sparse attention}: runs only on selected blocks and provides high-resolution local interaction,
+  \item \textbf{Latent memory}: stores compressed global information and supports read/write communication across blocks.
+\end{itemize}
+
+This architecture is intended to preserve retrieval behavior without paying universal attention cost across the full sequence.
+
+\subsection{From AMHT to AMHT V2}
+The original AMHT design was hybrid in components but not yet strongly hybrid in compute allocation. Attention was still computed broadly, and routing mostly modulated the resulting outputs.
+
+AMHT V2 makes two structural changes:
+\begin{enumerate}
+  \item routing is performed at the block level rather than the token level,
+  \item non-routed blocks skip attention computation entirely.
+\end{enumerate}
+
+This changes the model from a soft mixture of modules into an architecture with explicit computational branching.
+
+\subsection{Block-Level Routing}
+The input sequence is partitioned into fixed-size contiguous blocks. For each block, the router computes a summary representation and outputs a routing score. A top-k policy, determined by the target router ratio, selects the routed blocks. Only these routed blocks enter the sparse attention path.
+
+This design provides several advantages:
+\begin{itemize}
+  \item lower routing overhead than token-level gating,
+  \item improved memory locality on GPU hardware,
+  \item clearer budget control,
+  \item easier complexity analysis.
+\end{itemize}
+
+\subsection{Selective Attention and Universal SSM}
+The SSM path remains active for all blocks. This gives the model a universal low-cost computation path that preserves order-dependent information even when attention is skipped.
+
+The attention path becomes selective. Routed blocks attend to a limited local context while non-routed blocks remain on the SSM path only. The intended division of labor is:
+\begin{itemize}
+  \item SSM handles continuity and default state propagation,
+  \item attention handles sparse exceptions requiring explicit interaction.
+\end{itemize}
+
+\subsection{Latent Memory}
+Latent memory acts as a compressed global channel. Each layer reads from latent state and writes an updated compressed summary back into that state. This supports cross-block information flow even when the majority of blocks bypass attention.
+
+In this sense AMHT V2 is a three-path hybrid architecture rather than a two-path attention-recurrence interpolation.
+
+\IfFileExists{figures/amht_v2_architecture.pdf}{
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/amht_v2_architecture.pdf}
+\caption{AMHT V2 uses three coordinated computation paths. An SSM backbone processes all blocks, routed sparse attention runs only on selected blocks, and latent memory provides compressed global communication through read/write updates.}
+\label{fig:architecture}
+\end{figure}
+}{}
+
+\section{Experimental Setup}
+
+\subsection{Task}
+We evaluate on an 8K synthetic Needle-in-a-Haystack style retrieval benchmark with multiple needle depths:
+\[
+0.05,\ 0.15,\ 0.30,\ 0.50,\ 0.70,\ 0.85,\ 0.95
+\]
+The benchmark is configured to avoid immediate saturation and expose differences in both retrieval quality and throughput.
+
+\subsection{Models}
+We compare three effective operating points:
+\begin{itemize}
+  \item \textbf{Transformer}: matched local-attention baseline,
+  \item \textbf{AMHT-Fast}: shorter optimization schedule, efficiency-oriented,
+  \item \textbf{AMHT-Accurate}: longer optimization schedule, stronger retrieval-oriented operating point.
+\end{itemize}
+
+The AMHT-Fast and AMHT-Accurate configurations are produced from the same architecture family and define an explicit efficiency-quality frontier.
+
+\subsection{Protocol}
+All major comparisons are run at sequence length 8192. We report:
+\begin{itemize}
+  \item tokens per second,
+  \item milliseconds per step,
+  \item mean Needle-in-a-Haystack accuracy,
+  \item accuracy by depth,
+  \item scaling throughput from 1K to 8K.
+\end{itemize}
+
+Experiments are repeated across seeds 42, 43, and 44. Multi-seed execution is automated through the repository benchmark script.
+
+\section{Results}
+
+\subsection{Main Comparison}
+Across AMHT V2 operating points and seeds, the aggregate comparison against the Transformer baseline is:
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lcc}
+\toprule
+Metric & AMHT & Transformer \\
+\midrule
+Throughput (tokens/s) & $122252.2940 \pm 4031.5286$ & $96122.7907 \pm 4098.2288$ \\
+Latency (ms/step) & $67.0681 \pm 2.1539$ & $85.3266 \pm 3.5999$ \\
+Mean NIAH accuracy & $0.8095 \pm 0.2151$ & $0.5238 \pm 0.0825$ \\
+\bottomrule
+\end{tabular}
+\caption{Aggregate AMHT V2 versus Transformer results at 8K.}
+\label{tab:main}
+\end{table}
+
+These results support the main empirical claim of this draft: the routed hybrid architecture improves both throughput and retrieval quality relative to the matched local-attention Transformer baseline in the present 8K setting.
+
+\subsection{Retrieval by Depth}
+AMHT improves retrieval across most evaluated depths.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lcc}
+\toprule
+Depth & AMHT mean$\pm$std & Transformer mean$\pm$std \\
+\midrule
+0.05 & $0.8333 \pm 0.4082$ & $0.6667 \pm 0.5774$ \\
+0.15 & $0.6667 \pm 0.5164$ & $0.3333 \pm 0.5774$ \\
+0.30 & $0.8333 \pm 0.4082$ & $0.6667 \pm 0.5774$ \\
+0.50 & $1.0000 \pm 0.0000$ & $0.3333 \pm 0.5774$ \\
+0.70 & $0.6667 \pm 0.5164$ & $0.3333 \pm 0.5774$ \\
+0.85 & $0.8333 \pm 0.4082$ & $0.6667 \pm 0.5774$ \\
+0.95 & $0.8333 \pm 0.4082$ & $0.6667 \pm 0.5774$ \\
+\bottomrule
+\end{tabular}
+\caption{Needle-in-a-Haystack accuracy by depth.}
+\label{tab:depth}
+\end{table}
+
+The strongest separation appears at intermediate and moderately deep positions such as 0.15, 0.50, and 0.70. These are precisely the types of retrieval locations where a model must maintain global information without paying universal attention cost.
+
+\IfFileExists{figures/niah_by_depth.pdf}{
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.88\linewidth]{figures/niah_by_depth.pdf}
+\caption{Needle-in-a-Haystack retrieval accuracy by depth at 8K context. AMHT improves mean retrieval accuracy relative to the matched local-attention Transformer baseline and is especially stronger at several shallow and intermediate retrieval depths.}
+\label{fig:niah}
+\end{figure}
+}{}
+
+\subsection{Scaling Throughput}
+AMHT is competitive at 1K and clearly faster at 2K, 4K, and 8K.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lcc}
+\toprule
+Sequence length & AMHT mean$\pm$std & Transformer mean$\pm$std \\
+\midrule
+1024 & $98300.5394 \pm 7567.1875$ & $102736.7469 \pm 722.5284$ \\
+2048 & $131019.1113 \pm 14728.2585$ & $115244.4212 \pm 561.7383$ \\
+4096 & $137312.5889 \pm 9475.0074$ & $104229.2280 \pm 2769.8869$ \\
+8192 & $136201.4159 \pm 7054.8371$ & $103857.9270 \pm 1086.9657$ \\
+\bottomrule
+\end{tabular}
+\caption{Throughput scaling from 1K to 8K.}
+\label{tab:scaling}
+\end{table}
+
+This pattern is important. AMHT does not uniformly dominate at the shortest context, but once sequence length increases beyond 1K, the selective computation path produces a substantial throughput advantage.
+
+\IfFileExists{figures/throughput_scaling.pdf}{
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.88\linewidth]{figures/throughput_scaling.pdf}
+\caption{Throughput scaling from 1K to 8K context. AMHT is competitive at 1K and substantially faster than the Transformer baseline at longer sequence lengths, consistent with its routed selective-computation design.}
+\label{fig:scaling}
+\end{figure}
+}{}
+
+\subsection{Efficiency-Quality Frontier}
+The AMHT-Fast and AMHT-Accurate configurations define two useful operating points:
+\begin{itemize}
+  \item \textbf{AMHT-Fast}: optimized for higher throughput with lower optimization budget,
+  \item \textbf{AMHT-Accurate}: optimized for stronger retrieval quality while retaining a throughput advantage over the Transformer baseline.
+\end{itemize}
+
+This is a stronger result than a single-run comparison because it shows that the same hybrid architecture can be tuned toward systems efficiency or retrieval quality depending on the target regime.
+
+\IfFileExists{figures/efficiency_quality_frontier.pdf}{
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.82\linewidth]{figures/efficiency_quality_frontier.pdf}
+\caption{Efficiency-quality frontier for the evaluated 8K operating points. AMHT exposes two useful regimes: a faster configuration with higher throughput than the Transformer baseline, and a more accurate configuration that further improves retrieval while remaining throughput-competitive.}
+\label{fig:frontier}
+\end{figure}
+}{}
+
+\section{Discussion}
+The central lesson from these experiments is that hybrid sequence architectures become substantially more compelling when they are hybrid in actual computation rather than only in module composition.
+
+The original AMHT formulation combined recurrence, sparse attention, and memory, but did not fully realize the intended efficiency benefit because attention cost was not sufficiently constrained. AMHT V2 changes that by:
+\begin{itemize}
+  \item routing at the block level,
+  \item skipping attention for non-routed blocks,
+  \item preserving an always-on recurrent path,
+  \item using latent state for compressed global communication.
+\end{itemize}
+
+The result is an architecture that is easier to justify both computationally and empirically.
+
+These experiments do not show that AMHT dominates every long-context architecture. They show something narrower and more defensible: when compared to a matched local-attention Transformer on the present 8K retrieval benchmark, routed hybrid computation improves both speed and quality in aggregate.
+
+\section{Limitations}
+This draft has several important limitations.
+
+First, the benchmark is synthetic and retrieval-oriented. It demonstrates long-context selective recall, but it is not yet a full natural-language long-context benchmark.
+
+Second, the baseline set is still incomplete. The current comparison includes a local-attention Transformer but not yet a denser Transformer baseline, a sparse Transformer baseline, or a memory-centric SSM baseline such as Mamba-family models.
+
+Third, although the architecture now provides clear throughput benefits, the routed sparse attention implementation is still relatively simple and likely not yet systems-optimal.
+
+Fourth, the paper currently supports a strong preprint claim, but not yet the broadest possible claim about long-context generality.
+
+\section{Conclusion}
+We introduced AMHT V2, a routed hybrid long-context architecture that combines an SSM backbone, block-routed sparse attention, and latent compressed memory. By moving from module-level hybridization to computation-level hybridization, AMHT V2 makes routing control real attention cost rather than only output weighting.
+
+On the current 8K synthetic retrieval benchmark, AMHT V2 outperforms a matched local-attention Transformer baseline in both throughput and retrieval quality. The model also exposes a useful efficiency-quality frontier through fast and accurate operating points.
+
+These results suggest that routed hybrid architectures are a promising direction for long-context modeling, especially when recurrence, selective attention, and compressed memory are given distinct computational roles.
+
+\section{Reproducibility Notes}
+The repository contains:
+\begin{itemize}
+  \item explicit AMHT and Transformer configs,
+  \item multi-seed benchmarking scripts,
+  \item structured JSON and JSONL logging,
+  \item benchmark aggregation utilities.
+\end{itemize}
+
+These components are sufficient to reproduce the core tables in this draft from committed code and explicit configuration files.
+
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\end{document}

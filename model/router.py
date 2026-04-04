@@ -25,7 +25,11 @@ class SparseRouter(nn.Module):
         super().__init__()
         if dim % heads != 0:
             raise ValueError(f"dim={dim} must be divisible by heads={heads}")
-        self.router = nn.Linear(dim, 1)
+        self.router = nn.Sequential(
+            nn.Linear(dim * 2, dim),
+            nn.GELU(),
+            nn.Linear(dim, 1),
+        )
         self.q_proj = nn.Linear(dim, dim)
         self.k_proj = nn.Linear(dim, dim)
         self.v_proj = nn.Linear(dim, dim)
@@ -39,11 +43,15 @@ class SparseRouter(nn.Module):
 
     def _reset_parameters(self) -> None:
         target = min(max(self.router_ratio, 1e-4), 1 - 1e-4)
-        nn.init.zeros_(self.router.weight)
-        nn.init.constant_(self.router.bias, math.log(target / (1.0 - target)))
+        first, _, second = self.router
+        nn.init.xavier_uniform_(first.weight)
+        nn.init.zeros_(first.bias)
+        nn.init.zeros_(second.weight)
+        nn.init.constant_(second.bias, math.log(target / (1.0 - target)))
 
     def gate(self, x: torch.Tensor) -> torch.Tensor:
-        return torch.sigmoid(self.router(x)).squeeze(-1)
+        zeros = torch.zeros_like(x)
+        return torch.sigmoid(self.router(torch.cat([x, zeros], dim=-1))).squeeze(-1)
 
     def block_gate(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         batch, seq_len, _ = x.shape
@@ -54,7 +62,19 @@ class SparseRouter(nn.Module):
             x = torch.cat([x, x.new_zeros(batch, pad, x.size(-1))], dim=1)
         blocks = x.view(batch, num_blocks, block_size, x.size(-1))
         block_summary = blocks.mean(dim=2)
-        block_scores = torch.sigmoid(self.router(block_summary)).squeeze(-1)
+
+        # Add a coarse local-context summary so routing depends on both block content
+        # and nearby sequence state, not only the block's own mean-pooled representation.
+        local_context = torch.zeros_like(block_summary)
+        if num_blocks > 1:
+            local_context[:, 1:] += block_summary[:, :-1]
+            local_context[:, :-1] += block_summary[:, 1:]
+            neighbor_count = torch.ones_like(block_summary[..., :1])
+            neighbor_count[:, 1:] += 1
+            neighbor_count[:, :-1] += 1
+            local_context = local_context / neighbor_count
+        router_input = torch.cat([block_summary, local_context], dim=-1)
+        block_scores = torch.sigmoid(self.router(router_input)).squeeze(-1)
 
         target_blocks = max(1, int(math.ceil(num_blocks * self.router_ratio)))
         topk = min(target_blocks, num_blocks)
@@ -99,6 +119,7 @@ class SparseRouter(nn.Module):
         block_size = min(self.block_size, seq_len)
         num_blocks = (seq_len + block_size - 1) // block_size
         pad = num_blocks * block_size - seq_len
+        window_blocks = max(1, int(math.ceil(num_blocks * self.router_ratio)))
 
         if pad > 0:
             padded_x = torch.cat([x, x.new_zeros(batch, pad, dim)], dim=1)
@@ -110,28 +131,43 @@ class SparseRouter(nn.Module):
         blocks = padded_x.view(batch, num_blocks, block_size, dim)
         outputs = torch.zeros_like(blocks)
 
-        for batch_idx in range(batch):
-            active_blocks = torch.nonzero(selected_blocks[batch_idx], as_tuple=False).flatten()
-            if active_blocks.numel() == 0:
-                continue
+        routed_per_batch = min(window_blocks, num_blocks)
+        selected_indices = torch.topk(selected_blocks.to(torch.int), k=routed_per_batch, dim=1).indices
 
-            for block_index in active_blocks.tolist():
-                start_block = max(0, block_index - max(1, int(math.ceil(num_blocks * self.router_ratio))) + 1)
-                end_block = block_index + 1
-                q_tokens = blocks[batch_idx : batch_idx + 1, block_index].reshape(1, block_size, dim)
-                kv_tokens = blocks[batch_idx : batch_idx + 1, start_block:end_block].reshape(
-                    1, (end_block - start_block) * block_size, dim
-                )
+        batch_indices = torch.arange(batch, device=x.device)[:, None]
+        q_blocks = blocks[batch_indices, selected_indices]
 
-                q = self.q_proj(q_tokens).view(1, block_size, self.heads, self.head_dim).transpose(1, 2)
-                k = self.k_proj(kv_tokens).view(1, kv_tokens.size(1), self.heads, self.head_dim).transpose(1, 2)
-                v = self.v_proj(kv_tokens).view(1, kv_tokens.size(1), self.heads, self.head_dim).transpose(1, 2)
+        # Build a fixed-size left-looking context window ending at each routed block.
+        offsets = torch.arange(window_blocks - 1, -1, -1, device=x.device)
+        context_indices = selected_indices.unsqueeze(-1) - offsets.view(1, 1, -1)
+        valid_context = context_indices >= 0
+        context_indices = context_indices.clamp_min(0)
+        kv_blocks = blocks[batch_indices[:, :, None], context_indices]
 
-                scores = torch.matmul(q, k.transpose(-2, -1)) / (self.head_dim ** 0.5)
-                attn = torch.softmax(scores, dim=-1)
-                mixed = torch.matmul(attn, v)
-                mixed = mixed.transpose(1, 2).contiguous().view(1, block_size, dim)
-                outputs[batch_idx, block_index] = self.out_proj(mixed)[0]
+        q_tokens = q_blocks.reshape(batch * routed_per_batch, block_size, dim)
+        kv_tokens = kv_blocks.reshape(batch * routed_per_batch, window_blocks * block_size, dim)
+
+        q = self.q_proj(q_tokens).view(batch * routed_per_batch, block_size, self.heads, self.head_dim).transpose(1, 2)
+        k = self.k_proj(kv_tokens).view(batch * routed_per_batch, kv_tokens.size(1), self.heads, self.head_dim).transpose(1, 2)
+        v = self.v_proj(kv_tokens).view(batch * routed_per_batch, kv_tokens.size(1), self.heads, self.head_dim).transpose(1, 2)
+
+        scores = torch.matmul(q, k.transpose(-2, -1)) / (self.head_dim ** 0.5)
+        valid_tokens = valid_context.unsqueeze(-1).expand(-1, -1, -1, block_size).reshape(
+            batch * routed_per_batch, window_blocks * block_size
+        )
+        scores = scores.masked_fill(~valid_tokens[:, None, None, :], torch.finfo(scores.dtype).min)
+        attn = torch.softmax(scores, dim=-1)
+        mixed = torch.matmul(attn, v)
+        mixed = mixed.transpose(1, 2).contiguous().view(batch, routed_per_batch, block_size, dim)
+        mixed = self.out_proj(mixed.view(batch * routed_per_batch, block_size, dim)).view(
+            batch, routed_per_batch, block_size, dim
+        )
+
+        outputs.scatter_(
+            1,
+            selected_indices[:, :, None, None].expand(-1, -1, block_size, dim),
+            mixed,
+        )
 
         output_tokens = outputs.view(batch, num_blocks * block_size, dim)[:, :seq_len]
         return output_tokens * padded_mask[:, :seq_len].unsqueeze(-1).to(output_tokens.dtype)

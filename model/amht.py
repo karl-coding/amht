@@ -56,7 +56,7 @@ class AMHTBlock(nn.Module):
         latent_state: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         h = self.norm(x)
-        latent_read = self.memory.read(latent_state)
+        latent_read = self.memory.read(latent_state, h)
         h_with_memory = h + latent_read
         block_scores, token_mask, selected_blocks = self.router.block_gate(h_with_memory)
         mixed = self.ssm(h_with_memory) + self.router.routed_sparse_attention(h_with_memory, token_mask, selected_blocks)
@@ -104,7 +104,7 @@ class AMHTModel(nn.Module):
 
         x = self.token_emb(tokens) + self.pos_emb[:, :seq_len]
         latent_state = self.memory.init_state(batch_size=batch)
-        x = x + self.memory.read(latent_state)
+        x = x + self.memory.read(latent_state, x)
 
         router_penalty = x.new_zeros(())
         router_mean = x.new_zeros(())

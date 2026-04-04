@@ -8,3 +8,13 @@ scripts/__pycache__/
 eval/__pycache__/
 model/__pycache__/
 train/__pycache__/
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.pdf
+*.zip
+results_v1/
