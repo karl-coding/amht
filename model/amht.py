@@ -12,7 +12,7 @@ except ImportError as exc:  # pragma: no cover
         "PyTorch is required to run AMHT. Install dependencies from requirements.txt."
     ) from exc
 
-from model.memory import LatentMemory
+from model.memory import LatentMemory, LatentMemoryIO, LatentMemoryState
 from model.router import SparseRouter
 from model.ssm import SSMBlock
 
@@ -35,13 +35,29 @@ class AMHTBlock(nn.Module):
         state_size: int,
         attention_chunk_size: int,
         block_size: int,
-        memory: LatentMemory,
+        memory_io: LatentMemoryIO | None,
+        ssm_impl: str = "surrogate",
+        ssm_groups: int = 4,
+        ssm_conv_kernel: int = 3,
+        ssm_complex: bool = False,
         router_neighbor_radius: int = 0,
         router_neighbor_bonus: float = 0.0,
+        router_feature_sources: int = 2,
+        router_expand_mode: str = "bonus",
+        router_straight_through_scores: bool = False,
+        router_straight_through_temperature: float = 0.1,
+        router_straight_through_scale: float = 0.1,
     ) -> None:
         super().__init__()
         self.norm = nn.LayerNorm(dim)
-        self.ssm = SSMBlock(dim, state_size)
+        self.ssm = SSMBlock(
+            dim=dim,
+            state_size=state_size,
+            impl=ssm_impl,
+            groups=ssm_groups,
+            conv_kernel=ssm_conv_kernel,
+            complex_state=ssm_complex,
+        )
         self.router = SparseRouter(
             dim,
             heads,
@@ -50,6 +66,11 @@ class AMHTBlock(nn.Module):
             block_size,
             router_neighbor_radius,
             router_neighbor_bonus,
+            feature_sources=router_feature_sources,
+            expand_mode=router_expand_mode,
+            straight_through_scores=router_straight_through_scores,
+            straight_through_temperature=router_straight_through_temperature,
+            straight_through_scale=router_straight_through_scale,
         )
         self.ff = nn.Sequential(
             nn.LayerNorm(dim),
@@ -57,22 +78,37 @@ class AMHTBlock(nn.Module):
             nn.GELU(),
             nn.Linear(hidden_dim, dim),
         )
-        self.memory = memory
+        self.memory = memory_io
         self.router_ratio = router_ratio
 
     def forward(
         self,
         x: torch.Tensor,
         latent_state: torch.Tensor,
+        memory_io: LatentMemory | LatentMemoryIO | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        memory = memory_io if memory_io is not None else self.memory
+        if memory is None:
+            raise ValueError("AMHTBlock requires a memory I/O module")
+
         h = self.norm(x)
-        latent_read = self.memory.read(latent_state, h)
+        latent_read = memory.read(latent_state, h)
         h_with_memory = h + latent_read
-        block_scores, token_mask, selected_blocks = self.router.block_gate(h_with_memory)
-        mixed = self.ssm(h_with_memory) + self.router.routed_sparse_attention(h_with_memory, token_mask, selected_blocks)
+        ssm_out, recurrent_features = self.ssm(h_with_memory, return_features=True)
+        block_scores, token_mask, selected_blocks, selection_gate = self.router.block_gate(
+            h_with_memory,
+            recurrent_context=recurrent_features,
+            latent_context=latent_state.mean(dim=1, keepdim=True),
+        )
+        mixed = ssm_out + self.router.routed_sparse_attention(
+            h_with_memory,
+            token_mask,
+            selected_blocks,
+            selection_gate=selection_gate,
+        )
         x = x + mixed
         x = x + self.ff(x)
-        latent_state = self.memory.write(latent_state, x)
+        latent_state = memory.write(latent_state, x)
         router_mean = block_scores.mean()
         router_penalty = (router_mean - self.router_ratio).pow(2)
         return x, latent_state, router_penalty, router_mean
@@ -85,10 +121,23 @@ class AMHTModel(nn.Module):
         self.max_seq_len = int(model_cfg["max_seq_len"])
         self.vocab_size = int(model_cfg["vocab_size"])
         self.dim = int(model_cfg["dim"])
+        self.memory_per_layer_io = bool(model_cfg.get("memory_per_layer_io", False))
 
         self.token_emb = nn.Embedding(self.vocab_size, self.dim)
         self.pos_emb = nn.Parameter(torch.randn(1, self.max_seq_len, self.dim) * 0.02)
-        self.memory = LatentMemory(int(model_cfg["latent_tokens"]), self.dim)
+
+        layers = int(model_cfg["layers"])
+        latent_tokens = int(model_cfg["latent_tokens"])
+        if self.memory_per_layer_io:
+            self.memory_state = LatentMemoryState(latent_tokens, self.dim)
+            self.input_memory = LatentMemoryIO(self.dim)
+            memory_ios: list[LatentMemoryIO | None] = [LatentMemoryIO(self.dim) for _ in range(layers)]
+        else:
+            self.memory = LatentMemory(latent_tokens, self.dim)
+            self.memory_state = None
+            self.input_memory = None
+            memory_ios = [None for _ in range(layers)]
+
         self.blocks = nn.ModuleList(
             [
                 AMHTBlock(
@@ -99,11 +148,20 @@ class AMHTModel(nn.Module):
                     state_size=int(model_cfg["ssm_state_size"]),
                     attention_chunk_size=int(model_cfg.get("attention_chunk_size", 256)),
                     block_size=int(model_cfg.get("block_size", 128)),
-                    memory=self.memory,
+                    memory_io=memory_ios[layer_index],
+                    ssm_impl=str(model_cfg.get("ssm_impl", "surrogate")),
+                    ssm_groups=int(model_cfg.get("ssm_groups", max(1, int(model_cfg.get("heads", 1))))),
+                    ssm_conv_kernel=int(model_cfg.get("ssm_conv_kernel", 3)),
+                    ssm_complex=bool(model_cfg.get("ssm_complex", False)),
                     router_neighbor_radius=int(model_cfg.get("router_neighbor_radius", 0)),
                     router_neighbor_bonus=float(model_cfg.get("router_neighbor_bonus", 0.0)),
+                    router_feature_sources=int(model_cfg.get("router_feature_sources", 2)),
+                    router_expand_mode=str(model_cfg.get("router_expand_mode", "bonus")),
+                    router_straight_through_scores=bool(model_cfg.get("router_straight_through_scores", False)),
+                    router_straight_through_temperature=float(model_cfg.get("router_straight_through_temperature", 0.1)),
+                    router_straight_through_scale=float(model_cfg.get("router_straight_through_scale", 0.1)),
                 )
-                for _ in range(int(model_cfg["layers"]))
+                for layer_index in range(layers)
             ]
         )
         self.norm = nn.LayerNorm(self.dim)
@@ -115,13 +173,21 @@ class AMHTModel(nn.Module):
             raise ValueError(f"Sequence length {seq_len} exceeds max_seq_len {self.max_seq_len}")
 
         x = self.token_emb(tokens) + self.pos_emb[:, :seq_len]
-        latent_state = self.memory.init_state(batch_size=batch)
-        x = x + self.memory.read(latent_state, x)
+        if self.memory_per_layer_io:
+            if self.memory_state is None or self.input_memory is None:
+                raise ValueError("Per-layer memory I/O requires memory_state and input_memory")
+            latent_state = self.memory_state.init_state(batch_size=batch)
+            x = x + self.input_memory.read(latent_state, x)
+            shared_memory: LatentMemory | LatentMemoryIO | None = None
+        else:
+            latent_state = self.memory.init_state(batch_size=batch)
+            x = x + self.memory.read(latent_state, x)
+            shared_memory = self.memory
 
         router_penalty = x.new_zeros(())
         router_mean = x.new_zeros(())
         for block in self.blocks:
-            x, latent_state, penalty, mean_score = block(x, latent_state)
+            x, latent_state, penalty, mean_score = block(x, latent_state, memory_io=shared_memory)
             router_penalty = router_penalty + penalty
             router_mean = router_mean + mean_score
 

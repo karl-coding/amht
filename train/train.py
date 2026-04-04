@@ -27,6 +27,7 @@ import yaml
 
 from data.dataset import RetrievalDataset, SyntheticDataset
 from model.amht import AMHTModel, compute_loss
+from model.mamba3_hybrid import Mamba3HybridModel
 from model.transformer import LocalTransformerModel
 
 _DISTRIBUTED_PATH = ROOT / "train" / "distributed.py"
@@ -66,6 +67,8 @@ def build_model(cfg: dict) -> nn.Module:
     architecture = str(cfg["model"].get("architecture", "amht")).lower()
     if architecture == "amht":
         return AMHTModel(cfg)
+    if architecture == "mamba3_hybrid":
+        return Mamba3HybridModel(cfg)
     if architecture == "transformer":
         return LocalTransformerModel(cfg)
     raise SystemExit(f"Unsupported model.architecture={architecture}")
@@ -84,6 +87,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=None, help="Optional random seed override")
     parser.add_argument("--resume", default=None, help="Optional checkpoint path to resume from")
     parser.add_argument("--log-jsonl", default=None, help="Optional JSONL path for training metrics")
+    parser.add_argument("--checkpoint-out", default=None, help="Optional checkpoint output path")
     return parser.parse_args()
 
 
@@ -197,7 +201,8 @@ def train() -> None:
             with log_path.open("a", encoding="utf-8") as handle:
                 handle.write(json.dumps(metrics) + "\n")
 
-    checkpoint_path = checkpoint_dir / f"{architecture}_seq{args.seq_len}.pt"
+    checkpoint_path = Path(args.checkpoint_out) if args.checkpoint_out else checkpoint_dir / f"{architecture}_seq{args.seq_len}.pt"
+    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(
         {
             "model": model.state_dict(),

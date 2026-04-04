@@ -9,12 +9,26 @@ except ImportError as exc:  # pragma: no cover
     ) from exc
 
 
-class LatentMemory(nn.Module):
-    """Compressed latent memory shared across the sequence."""
+class LatentMemoryState(nn.Module):
+    """Shared latent state template for compressed global memory."""
 
     def __init__(self, latent_tokens: int, dim: int) -> None:
         super().__init__()
-        self.memory = nn.Parameter(torch.randn(1, latent_tokens, dim) * 0.02)
+        self.template = nn.Parameter(torch.randn(1, latent_tokens, dim) * 0.02)
+
+    def init_state(self, batch_size: int) -> torch.Tensor:
+        return self.template.expand(batch_size, -1, -1).clone()
+
+    def pooled(self, batch_size: int) -> torch.Tensor:
+        latent = self.template.expand(batch_size, -1, -1)
+        return latent.mean(dim=1, keepdim=True)
+
+
+class LatentMemoryIO(nn.Module):
+    """Layer-local read and write projections over a shared latent state."""
+
+    def __init__(self, dim: int) -> None:
+        super().__init__()
         self.read_q = nn.Linear(dim, dim)
         self.read_k = nn.Linear(dim, dim)
         self.read_v = nn.Linear(dim, dim)
@@ -24,13 +38,6 @@ class LatentMemory(nn.Module):
         self.write_v = nn.Linear(dim, dim)
         self.write_out = nn.Linear(dim, dim)
         self.write_gate = nn.Linear(dim, dim)
-
-    def forward(self, batch_size: int) -> torch.Tensor:
-        latent = self.memory.expand(batch_size, -1, -1)
-        return latent.mean(dim=1, keepdim=True)
-
-    def init_state(self, batch_size: int) -> torch.Tensor:
-        return self.memory.expand(batch_size, -1, -1).clone()
 
     def read(self, latent_state: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
         q = self.read_q(x)
@@ -50,3 +57,24 @@ class LatentMemory(nn.Module):
         update = self.write_out(torch.matmul(attn, v))
         gate = torch.sigmoid(self.write_gate(latent_state))
         return latent_state + gate * update
+
+
+class LatentMemory(nn.Module):
+    """Backward-compatible wrapper for shared state plus shared I/O."""
+
+    def __init__(self, latent_tokens: int, dim: int) -> None:
+        super().__init__()
+        self.state = LatentMemoryState(latent_tokens, dim)
+        self.io = LatentMemoryIO(dim)
+
+    def forward(self, batch_size: int) -> torch.Tensor:
+        return self.state.pooled(batch_size)
+
+    def init_state(self, batch_size: int) -> torch.Tensor:
+        return self.state.init_state(batch_size)
+
+    def read(self, latent_state: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
+        return self.io.read(latent_state, x)
+
+    def write(self, latent_state: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
+        return self.io.write(latent_state, x)

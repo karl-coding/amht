@@ -26,6 +26,7 @@ import yaml
 from eval.niah import benchmark_niah
 from eval.scaling import benchmark_scaling
 from model.amht import AMHTModel, synthetic_batch
+from model.mamba3_hybrid import Mamba3HybridModel
 from model.transformer import LocalTransformerModel
 
 
@@ -57,6 +58,8 @@ def build_model(cfg: dict) -> torch.nn.Module:
     architecture = str(cfg["model"].get("architecture", "amht")).lower()
     if architecture == "amht":
         return AMHTModel(cfg)
+    if architecture == "mamba3_hybrid":
+        return Mamba3HybridModel(cfg)
     if architecture == "transformer":
         return LocalTransformerModel(cfg)
     raise SystemExit(f"Unsupported model.architecture={architecture}")
@@ -95,6 +98,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--device", default="auto", help="cpu, cuda, mps, or auto")
     parser.add_argument("--seed", type=int, default=None, help="Optional random seed override")
     parser.add_argument("--save-json", default=None, help="Optional path to save benchmark JSON output")
+    parser.add_argument("--warmup-steps", type=int, default=None, help="Optional override for evaluation.warmup_steps")
+    parser.add_argument("--benchmark-steps", type=int, default=None, help="Optional override for evaluation.benchmark_steps")
     return parser.parse_args()
 
 
@@ -137,6 +142,10 @@ def benchmark_throughput(model: torch.nn.Module, cfg: dict, seq_len: int, device
 def main() -> None:
     args = parse_args()
     cfg = load_config(args.config)
+    if args.warmup_steps is not None:
+        cfg.setdefault("evaluation", {})["warmup_steps"] = int(args.warmup_steps)
+    if args.benchmark_steps is not None:
+        cfg.setdefault("evaluation", {})["benchmark_steps"] = int(args.benchmark_steps)
     if args.seq_len > cfg["model"]["max_seq_len"]:
         raise SystemExit(
             f"--seq-len {args.seq_len} exceeds config model.max_seq_len={cfg['model']['max_seq_len']}"

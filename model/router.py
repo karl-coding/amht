@@ -23,12 +23,18 @@ class SparseRouter(nn.Module):
         block_size: int = 128,
         neighbor_radius: int = 0,
         neighbor_bonus: float = 0.0,
+        feature_sources: int = 2,
+        expand_mode: str = "bonus",
+        straight_through_scores: bool = False,
+        straight_through_temperature: float = 0.1,
+        straight_through_scale: float = 0.1,
     ) -> None:
         super().__init__()
         if dim % heads != 0:
             raise ValueError(f"dim={dim} must be divisible by heads={heads}")
+        self.feature_sources = max(2, int(feature_sources))
         self.router = nn.Sequential(
-            nn.Linear(dim * 2, dim),
+            nn.Linear(dim * self.feature_sources, dim),
             nn.GELU(),
             nn.Linear(dim, 1),
         )
@@ -43,6 +49,10 @@ class SparseRouter(nn.Module):
         self.block_size = block_size
         self.neighbor_radius = max(0, int(neighbor_radius))
         self.neighbor_bonus = max(0.0, float(neighbor_bonus))
+        self.expand_mode = str(expand_mode).lower()
+        self.straight_through_scores = bool(straight_through_scores)
+        self.straight_through_temperature = max(1e-3, float(straight_through_temperature))
+        self.straight_through_scale = float(straight_through_scale)
         self._reset_parameters()
 
     def _reset_parameters(self) -> None:
@@ -53,22 +63,43 @@ class SparseRouter(nn.Module):
         nn.init.zeros_(second.weight)
         nn.init.constant_(second.bias, math.log(target / (1.0 - target)))
 
-    def gate(self, x: torch.Tensor) -> torch.Tensor:
-        zeros = torch.zeros_like(x)
-        return torch.sigmoid(self.router(torch.cat([x, zeros], dim=-1))).squeeze(-1)
-
-    def block_gate(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        batch, seq_len, _ = x.shape
+    def _pad_to_blocks(self, x: torch.Tensor) -> tuple[torch.Tensor, int, int]:
+        batch, seq_len, dim = x.shape
         block_size = min(self.block_size, seq_len)
         num_blocks = (seq_len + block_size - 1) // block_size
         pad = num_blocks * block_size - seq_len
         if pad > 0:
-            x = torch.cat([x, x.new_zeros(batch, pad, x.size(-1))], dim=1)
-        blocks = x.view(batch, num_blocks, block_size, x.size(-1))
-        block_summary = blocks.mean(dim=2)
+            x = torch.cat([x, x.new_zeros(batch, pad, dim)], dim=1)
+        return x, num_blocks, block_size
 
-        # Add a coarse local-context summary so routing depends on both block content
-        # and nearby sequence state, not only the block's own mean-pooled representation.
+    def _summarize_source(
+        self,
+        source: torch.Tensor | None,
+        num_blocks: int,
+        block_size: int,
+        seq_len: int,
+        reference: torch.Tensor,
+    ) -> torch.Tensor:
+        if source is None:
+            return torch.zeros_like(reference)
+        if source.size(1) == 1:
+            return source.expand(-1, num_blocks, -1)
+        if source.size(1) != seq_len:
+            pooled = source.mean(dim=1, keepdim=True)
+            return pooled.expand(-1, num_blocks, -1)
+        padded, _, _ = self._pad_to_blocks(source)
+        blocks = padded.view(source.size(0), num_blocks, block_size, source.size(-1))
+        return blocks.mean(dim=2)
+
+    def gate(self, x: torch.Tensor) -> torch.Tensor:
+        zeros = torch.zeros_like(x)
+        features = [x, zeros]
+        while len(features) < self.feature_sources:
+            features.append(zeros)
+        return torch.sigmoid(self.router(torch.cat(features, dim=-1))).squeeze(-1)
+
+    def _local_context(self, block_summary: torch.Tensor) -> torch.Tensor:
+        num_blocks = block_summary.size(1)
         local_context = torch.zeros_like(block_summary)
         if num_blocks > 1:
             local_context[:, 1:] += block_summary[:, :-1]
@@ -77,13 +108,11 @@ class SparseRouter(nn.Module):
             neighbor_count[:, 1:] += 1
             neighbor_count[:, :-1] += 1
             local_context = local_context / neighbor_count
-        router_input = torch.cat([block_summary, local_context], dim=-1)
-        block_scores = torch.sigmoid(self.router(router_input)).squeeze(-1)
+        return local_context
 
-        target_blocks = max(1, int(math.ceil(num_blocks * self.router_ratio)))
-        topk = min(target_blocks, num_blocks)
-
+    def _bonus_adjusted_scores(self, block_scores: torch.Tensor, topk: int) -> torch.Tensor:
         adjusted_scores = block_scores
+        num_blocks = block_scores.size(1)
         if self.neighbor_radius > 0 and self.neighbor_bonus > 0.0 and num_blocks > 1:
             seed_indices = torch.topk(block_scores, k=topk, dim=-1).indices
             seed_mask = torch.zeros_like(block_scores, dtype=torch.bool)
@@ -96,14 +125,103 @@ class SparseRouter(nn.Module):
                 locality_bonus[:, offset:] = torch.maximum(locality_bonus[:, offset:], left_bonus)
                 locality_bonus[:, :-offset] = torch.maximum(locality_bonus[:, :-offset], right_bonus)
             adjusted_scores = block_scores + self.neighbor_bonus * locality_bonus
+        return adjusted_scores
 
-        topk_indices = torch.topk(adjusted_scores, k=topk, dim=-1).indices
+    def _select_with_expansion(self, block_scores: torch.Tensor, topk: int) -> torch.Tensor:
+        batch, num_blocks = block_scores.shape
         selected = torch.zeros_like(block_scores, dtype=torch.bool)
-        selected.scatter_(1, topk_indices, True)
+        if self.neighbor_radius <= 0 or num_blocks <= 1:
+            selected.scatter_(1, torch.topk(block_scores, k=topk, dim=-1).indices, True)
+            return selected
+
+        span = max(1, 1 + 2 * self.neighbor_radius)
+        seed_k = max(1, min(num_blocks, int(math.ceil(topk / span))))
+        for batch_idx in range(batch):
+            scores = block_scores[batch_idx]
+            seed_indices = torch.topk(scores, k=seed_k, dim=-1).indices.tolist()
+            chosen: set[int] = set(seed_indices)
+            candidate_scores: dict[int, float] = {idx: float(scores[idx].item()) for idx in seed_indices}
+
+            for seed_idx in seed_indices:
+                for offset in range(1, self.neighbor_radius + 1):
+                    decay = float(self.neighbor_radius - offset + 1) / float(self.neighbor_radius + 1)
+                    for neighbor in (seed_idx - offset, seed_idx + offset):
+                        if 0 <= neighbor < num_blocks:
+                            boosted = float(scores[neighbor].item()) + self.neighbor_bonus * decay
+                            best = candidate_scores.get(neighbor)
+                            if best is None or boosted > best:
+                                candidate_scores[neighbor] = boosted
+
+            ranked = sorted(candidate_scores.items(), key=lambda item: item[1], reverse=True)
+            for index, _ in ranked:
+                chosen.add(index)
+                if len(chosen) >= topk:
+                    break
+
+            if len(chosen) < topk:
+                fallback = torch.topk(scores, k=topk, dim=-1).indices.tolist()
+                for index in fallback:
+                    chosen.add(index)
+                    if len(chosen) >= topk:
+                        break
+
+            selected[batch_idx, list(chosen)[:topk]] = True
+        return selected
+
+    def block_gate(
+        self,
+        x: torch.Tensor,
+        recurrent_context: torch.Tensor | None = None,
+        latent_context: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        batch, seq_len, _ = x.shape
+        padded_x, num_blocks, block_size = self._pad_to_blocks(x)
+        blocks = padded_x.view(batch, num_blocks, block_size, x.size(-1))
+        block_summary = blocks.mean(dim=2)
+        local_context = self._local_context(block_summary)
+        recurrent_summary = self._summarize_source(
+            recurrent_context,
+            num_blocks=num_blocks,
+            block_size=block_size,
+            seq_len=seq_len,
+            reference=block_summary,
+        )
+        latent_summary = self._summarize_source(
+            latent_context,
+            num_blocks=num_blocks,
+            block_size=block_size,
+            seq_len=seq_len,
+            reference=block_summary,
+        )
+
+        features = [block_summary, local_context]
+        optional_features = [recurrent_summary, latent_summary]
+        for feature_index in range(self.feature_sources - 2):
+            features.append(optional_features[feature_index] if feature_index < len(optional_features) else torch.zeros_like(block_summary))
+
+        router_input = torch.cat(features, dim=-1)
+        block_scores = torch.sigmoid(self.router(router_input)).squeeze(-1)
+
+        target_blocks = max(1, int(math.ceil(num_blocks * self.router_ratio)))
+        topk = min(target_blocks, num_blocks)
+        if self.expand_mode == "expand":
+            selected = self._select_with_expansion(block_scores, topk)
+        else:
+            adjusted_scores = self._bonus_adjusted_scores(block_scores, topk)
+            topk_indices = torch.topk(adjusted_scores, k=topk, dim=-1).indices
+            selected = torch.zeros_like(block_scores, dtype=torch.bool)
+            selected.scatter_(1, topk_indices, True)
 
         expanded = selected.unsqueeze(-1).expand(-1, -1, block_size).reshape(batch, num_blocks * block_size)
         token_mask = expanded[:, :seq_len]
-        return block_scores, token_mask, selected
+
+        selection_gate = selected.float()
+        if self.straight_through_scores:
+            threshold = torch.topk(block_scores, k=topk, dim=-1).values[:, -1:].detach()
+            soft_selection = torch.sigmoid((block_scores - threshold) / self.straight_through_temperature)
+            selection_gate = selection_gate + soft_selection - soft_selection.detach()
+
+        return block_scores, token_mask, selected, selection_gate
 
     def sparse_attention(self, x: torch.Tensor) -> torch.Tensor:
         batch, seq_len, dim = x.shape
@@ -133,6 +251,7 @@ class SparseRouter(nn.Module):
         x: torch.Tensor,
         token_mask: torch.Tensor,
         selected_blocks: torch.Tensor,
+        selection_gate: torch.Tensor | None = None,
     ) -> torch.Tensor:
         batch, seq_len, dim = x.shape
         block_size = min(self.block_size, seq_len)
@@ -182,7 +301,12 @@ class SparseRouter(nn.Module):
         attn = torch.softmax(scores, dim=-1)
         mixed = torch.matmul(attn, v[:, None])
         mixed = mixed.permute(0, 1, 3, 2, 4).contiguous().view(batch, routed_per_batch, block_size, dim)
-        mixed = self.out_proj(mixed.view(batch * routed_per_batch, block_size, dim)).view(batch, routed_per_batch, block_size, dim)
+        mixed = self.out_proj(mixed.view(batch * routed_per_batch, block_size, dim)).view(
+            batch,
+            routed_per_batch,
+            block_size,
+            dim,
+        )
 
         outputs.scatter_(
             1,
@@ -191,4 +315,12 @@ class SparseRouter(nn.Module):
         )
 
         output_tokens = outputs.view(batch, num_blocks * block_size, dim)[:, :seq_len]
-        return output_tokens * padded_mask[:, :seq_len].unsqueeze(-1).to(output_tokens.dtype)
+        output_tokens = output_tokens * padded_mask[:, :seq_len].unsqueeze(-1).to(output_tokens.dtype)
+
+        if self.straight_through_scores and selection_gate is not None:
+            gate_tokens = selection_gate.unsqueeze(-1).expand(-1, -1, block_size).reshape(batch, num_blocks * block_size)
+            gate_tokens = gate_tokens[:, :seq_len].unsqueeze(-1).to(output_tokens.dtype)
+            # Forward pass stays unchanged; backward pass exposes a task-driven signal to router scores.
+            output_tokens = output_tokens + self.straight_through_scale * x * (gate_tokens - gate_tokens.detach())
+
+        return output_tokens
