@@ -149,6 +149,13 @@ drive.mount('/content/drive')
 %env AMHT_CHECKPOINT_DIR=/content/drive/MyDrive/amht_checkpoints
 ```
 
+Shell alternative:
+
+```bash
+export AMHT_CHECKPOINT_DIR=/content/drive/MyDrive/amht_checkpoints
+mkdir -p "$AMHT_CHECKPOINT_DIR"
+```
+
 Training and evaluation both resolve checkpoints from `AMHT_CHECKPOINT_DIR` when it is set, so benchmark commands do not need a hardcoded `--checkpoint` path.
 
 ## Validated Runs
