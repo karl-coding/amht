@@ -34,6 +34,13 @@ class ModelSpec:
 
 
 MODEL_SPECS = {
+    "amht_v4_stage1_tuned": ModelSpec(
+        key="amht_v4_stage1_tuned",
+        label="AMHT-V4-Stage1",
+        config="train/config_amht_v4_stage1_tuned.yaml",
+        color="#264653",
+        marker="o",
+    ),
     "amht_v4_fast": ModelSpec(
         key="amht_v4_fast",
         label="AMHT-V4-Fast",
@@ -67,9 +74,9 @@ MODEL_SPECS = {
 
 PRESETS = {
     "stage1_tuning": {
-        "models": ["amht_v4_fast", "transformer_v4_baseline", "mamba3_hybrid_baseline"],
+        "models": ["amht_v4_stage1_tuned", "transformer_v4_baseline", "mamba3_hybrid_baseline"],
         "seeds": [42],
-        "steps_scale": 0.25,
+        "steps_scale": 0.5,
         "warmup_steps": 1,
         "benchmark_steps": 2,
         "eval_task": "all",

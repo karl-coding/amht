@@ -35,7 +35,11 @@ def fmt(value: float | None, digits: int = 4) -> str:
 
 
 def pick_best_amht(summary: dict) -> str | None:
-    candidates = [key for key in ("amht_v4_fast", "amht_v4_accurate") if key in summary.get("models", {})]
+    candidates = [
+        key
+        for key in ("amht_v4_stage1_tuned", "amht_v4_fast", "amht_v4_accurate")
+        if key in summary.get("models", {})
+    ]
     if not candidates:
         return None
 
