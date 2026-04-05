@@ -173,7 +173,7 @@ class SparseRouter(nn.Module):
         x: torch.Tensor,
         recurrent_context: torch.Tensor | None = None,
         latent_context: torch.Tensor | None = None,
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, dict[str, torch.Tensor]]:
         batch, seq_len, _ = x.shape
         padded_x, num_blocks, block_size = self._pad_to_blocks(x)
         blocks = padded_x.view(batch, num_blocks, block_size, x.size(-1))
@@ -221,7 +221,18 @@ class SparseRouter(nn.Module):
             soft_selection = torch.sigmoid((block_scores - threshold) / self.straight_through_temperature)
             selection_gate = selection_gate + soft_selection - soft_selection.detach()
 
-        return block_scores, token_mask, selected, selection_gate
+        selected_scores = block_scores.masked_select(selected)
+        unselected_scores = block_scores.masked_select(~selected)
+        selected_score_mean = selected_scores.mean() if selected_scores.numel() > 0 else block_scores.mean()
+        unselected_score_mean = unselected_scores.mean() if unselected_scores.numel() > 0 else block_scores.mean()
+        diagnostics = {
+            "selected_ratio": selected.float().mean(),
+            "selected_score_mean": selected_score_mean,
+            "unselected_score_mean": unselected_score_mean,
+            "score_gap": selected_score_mean - unselected_score_mean,
+        }
+
+        return block_scores, token_mask, selected, selection_gate, diagnostics
 
     def sparse_attention(self, x: torch.Tensor) -> torch.Tensor:
         batch, seq_len, dim = x.shape

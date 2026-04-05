@@ -74,7 +74,12 @@ def build_note(summary: dict) -> str:
     best_loss = metric(summary, best_amht, "train", "final_total_loss")
     best_router_loss = metric(summary, best_amht, "train", "final_router_loss")
     best_router_mean = metric(summary, best_amht, "train", "final_router_mean")
-    router_collapsed = best_router_mean is not None and best_router_mean < 0.05
+    best_router_selected_ratio = metric(summary, best_amht, "train", "final_router_selected_ratio")
+    best_router_selected_score_mean = metric(summary, best_amht, "train", "final_router_selected_score_mean")
+    best_router_unselected_score_mean = metric(summary, best_amht, "train", "final_router_unselected_score_mean")
+    best_router_score_gap = metric(summary, best_amht, "train", "final_router_score_gap")
+    router_score_collapsed = best_router_score_gap is not None and best_router_score_gap < 0.02
+    comparison_gaps: list[tuple[float | None, float | None]] = []
 
     lines.extend(
         [
@@ -86,6 +91,10 @@ def build_note(summary: dict) -> str:
             f"- Final train loss: `{fmt(best_loss)}`",
             f"- Final router loss: `{fmt(best_router_loss)}`",
             f"- Final router mean: `{fmt(best_router_mean)}`",
+            f"- Final selected ratio: `{fmt(best_router_selected_ratio)}`",
+            f"- Final selected score mean: `{fmt(best_router_selected_score_mean)}`",
+            f"- Final unselected score mean: `{fmt(best_router_unselected_score_mean)}`",
+            f"- Final router score gap: `{fmt(best_router_score_gap)}`",
             "",
         ]
     )
@@ -97,6 +106,7 @@ def build_note(summary: dict) -> str:
         target_tps = metric(summary, target_key, "throughput", "tokens_per_second")
         acc_gap = None if best_acc is None or target_acc is None else best_acc - target_acc
         tps_gap = None if best_tps is None or target_tps is None else best_tps - target_tps
+        comparison_gaps.append((acc_gap, tps_gap))
 
         block = [
             f"## AMHT vs {target_title}",
@@ -108,11 +118,12 @@ def build_note(summary: dict) -> str:
             "",
         ]
 
-        if router_collapsed and acc_gap is not None and acc_gap >= 0.0 and tps_gap is not None and tps_gap > 0.0:
+        if router_score_collapsed and acc_gap is not None and acc_gap >= 0.0 and tps_gap is not None and tps_gap > 0.0:
             block.extend(
                 [
                     "Recommendation:",
-                    "- Quality and throughput are acceptable, but routing collapsed far below the target budget. Tune router-learning next: lower `router_straight_through_temperature`, raise `router_straight_through_scale`, and consider increasing `router_weight`.",
+                    "- Quality and throughput are acceptable, and actual selected ratio is controlled by top-k. The issue is score calibration: selected and unselected blocks are no longer well separated.",
+                    "- Tune router-learning next: lower `router_straight_through_temperature`, raise `router_straight_through_scale`, and consider increasing `router_weight` only if score separation stays weak.",
                     "- Keep the stronger backbone fixed for this iteration so the next run isolates router and memory behavior.",
                     "",
                 ]
@@ -171,12 +182,37 @@ def build_note(summary: dict) -> str:
             "",
         ]
     )
-    if router_collapsed:
+    quality_deficit = any(acc_gap is not None and acc_gap < -0.02 for acc_gap, _ in comparison_gaps)
+    throughput_deficit = any(
+        tps_gap is not None and tps_gap < 0.0 and (acc_gap is None or acc_gap <= 0.02)
+        for acc_gap, tps_gap in comparison_gaps
+    )
+    if quality_deficit:
         lines.extend(
             [
-                "1. Restore routing toward the target budget with router-learning calibration.",
+                "1. Stabilize or strengthen the recurrent backbone.",
+                "2. Re-run the same baseline comparison.",
+                "3. Tune router and latent memory only after backbone gains stop moving.",
+                "4. Delay paper-focused freezing until AMHT is consistently ahead on the chosen quality-efficiency target.",
+                "",
+            ]
+        )
+    elif throughput_deficit:
+        lines.extend(
+            [
+                "1. Reduce selective-attention or memory overhead before changing the backbone again.",
                 "2. Re-run the same baseline comparison at the same sequence length and steps.",
-                "3. Tune latent memory only if routing recovers but quality stays flat.",
+                "3. Tune router score separation only after throughput recovers or if quality still stalls.",
+                "4. Return to backbone changes only if efficiency tuning fails to recover the tradeoff.",
+                "",
+            ]
+        )
+    elif router_score_collapsed:
+        lines.extend(
+            [
+                "1. Improve router score separation while keeping the top-k compute budget fixed.",
+                "2. Re-run the same baseline comparison at the same sequence length and steps.",
+                "3. Tune latent memory only if score separation improves but quality stays flat.",
                 "4. Return to backbone changes only if router tuning fails to improve retrieval.",
                 "",
             ]

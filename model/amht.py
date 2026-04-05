@@ -23,6 +23,10 @@ class LossBreakdown:
     main: torch.Tensor
     router: torch.Tensor
     router_mean: torch.Tensor
+    router_selected_ratio: torch.Tensor
+    router_selected_score_mean: torch.Tensor
+    router_unselected_score_mean: torch.Tensor
+    router_score_gap: torch.Tensor
 
 
 class AMHTBlock(nn.Module):
@@ -86,7 +90,7 @@ class AMHTBlock(nn.Module):
         x: torch.Tensor,
         latent_state: torch.Tensor,
         memory_io: LatentMemory | LatentMemoryIO | None = None,
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, dict[str, torch.Tensor]]:
         memory = memory_io if memory_io is not None else self.memory
         if memory is None:
             raise ValueError("AMHTBlock requires a memory I/O module")
@@ -95,7 +99,7 @@ class AMHTBlock(nn.Module):
         latent_read = memory.read(latent_state, h)
         h_with_memory = h + latent_read
         ssm_out, recurrent_features = self.ssm(h_with_memory, return_features=True)
-        block_scores, token_mask, selected_blocks, selection_gate = self.router.block_gate(
+        block_scores, token_mask, selected_blocks, selection_gate, selection_stats = self.router.block_gate(
             h_with_memory,
             recurrent_context=recurrent_features,
             latent_context=latent_state.mean(dim=1, keepdim=True),
@@ -110,8 +114,13 @@ class AMHTBlock(nn.Module):
         x = x + self.ff(x)
         latent_state = memory.write(latent_state, x)
         router_mean = block_scores.mean()
-        router_penalty = (router_mean - self.router_ratio).pow(2)
-        return x, latent_state, router_penalty, router_mean
+        return x, latent_state, {
+            "router_mean": router_mean,
+            "router_selected_ratio": selection_stats["selected_ratio"],
+            "router_selected_score_mean": selection_stats["selected_score_mean"],
+            "router_unselected_score_mean": selection_stats["unselected_score_mean"],
+            "router_score_gap": selection_stats["score_gap"],
+        }
 
 
 class AMHTModel(nn.Module):
@@ -184,16 +193,25 @@ class AMHTModel(nn.Module):
             x = x + self.memory.read(latent_state, x)
             shared_memory = self.memory
 
-        router_penalty = x.new_zeros(())
         router_mean = x.new_zeros(())
+        router_selected_ratio = x.new_zeros(())
+        router_selected_score_mean = x.new_zeros(())
+        router_unselected_score_mean = x.new_zeros(())
+        router_score_gap = x.new_zeros(())
         for block in self.blocks:
-            x, latent_state, penalty, mean_score = block(x, latent_state, memory_io=shared_memory)
-            router_penalty = router_penalty + penalty
-            router_mean = router_mean + mean_score
+            x, latent_state, block_stats = block(x, latent_state, memory_io=shared_memory)
+            router_mean = router_mean + block_stats["router_mean"]
+            router_selected_ratio = router_selected_ratio + block_stats["router_selected_ratio"]
+            router_selected_score_mean = router_selected_score_mean + block_stats["router_selected_score_mean"]
+            router_unselected_score_mean = router_unselected_score_mean + block_stats["router_unselected_score_mean"]
+            router_score_gap = router_score_gap + block_stats["router_score_gap"]
 
         stats = {
-            "router_penalty": router_penalty / max(len(self.blocks), 1),
             "router_mean": router_mean / max(len(self.blocks), 1),
+            "router_selected_ratio": router_selected_ratio / max(len(self.blocks), 1),
+            "router_selected_score_mean": router_selected_score_mean / max(len(self.blocks), 1),
+            "router_unselected_score_mean": router_unselected_score_mean / max(len(self.blocks), 1),
+            "router_score_gap": router_score_gap / max(len(self.blocks), 1),
         }
         logits = self.lm_head(self.norm(x))
         return logits, stats
@@ -209,6 +227,10 @@ def compute_loss(
     main_weight: float,
     router_weight: float,
     loss_mode: str = "next_token",
+    router_mean_target: float = 0.1,
+    router_mean_weight: float = 1.0,
+    router_score_margin: float = 0.02,
+    router_score_weight: float = 0.0,
 ) -> LossBreakdown:
     if loss_mode == "final_token":
         inputs = tokens[:, :-1]
@@ -220,11 +242,20 @@ def compute_loss(
         targets = tokens[:, 1:]
         logits, stats = model(inputs)
         main_loss = F.cross_entropy(logits.reshape(-1, logits.size(-1)), targets.reshape(-1))
-    router_penalty = stats["router_penalty"]
+    router_mean_penalty = (stats["router_mean"] - float(router_mean_target)).pow(2)
+    router_score_penalty = F.relu(float(router_score_margin) - stats["router_score_gap"]).pow(2)
+    router_penalty = (
+        float(router_mean_weight) * router_mean_penalty
+        + float(router_score_weight) * router_score_penalty
+    )
     total = main_weight * main_loss + router_weight * router_penalty
     return LossBreakdown(
         total=total,
         main=main_loss,
         router=router_penalty,
         router_mean=stats["router_mean"],
+        router_selected_ratio=stats["router_selected_ratio"],
+        router_selected_score_mean=stats["router_selected_score_mean"],
+        router_unselected_score_mean=stats["router_unselected_score_mean"],
+        router_score_gap=stats["router_score_gap"],
     )

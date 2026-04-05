@@ -106,4 +106,11 @@ class LocalTransformerModel(nn.Module):
 
         logits = self.lm_head(self.norm(x))
         zero = x.new_zeros(())
-        return logits, {"router_penalty": zero, "router_mean": zero}
+        return logits, {
+            "router_penalty": zero,
+            "router_mean": zero,
+            "router_selected_ratio": zero,
+            "router_selected_score_mean": zero,
+            "router_unselected_score_mean": zero,
+            "router_score_gap": zero,
+        }

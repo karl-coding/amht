@@ -292,6 +292,22 @@ def build_summary(runs_by_model: dict[str, list[dict]], model_keys: list[str]) -
                     "mean": mean_std(collect_train_metric(model_runs, "router_mean"))[0],
                     "std": mean_std(collect_train_metric(model_runs, "router_mean"))[1],
                 },
+                "final_router_selected_ratio": {
+                    "mean": mean_std(collect_train_metric(model_runs, "router_selected_ratio"))[0],
+                    "std": mean_std(collect_train_metric(model_runs, "router_selected_ratio"))[1],
+                },
+                "final_router_selected_score_mean": {
+                    "mean": mean_std(collect_train_metric(model_runs, "router_selected_score_mean"))[0],
+                    "std": mean_std(collect_train_metric(model_runs, "router_selected_score_mean"))[1],
+                },
+                "final_router_unselected_score_mean": {
+                    "mean": mean_std(collect_train_metric(model_runs, "router_unselected_score_mean"))[0],
+                    "std": mean_std(collect_train_metric(model_runs, "router_unselected_score_mean"))[1],
+                },
+                "final_router_score_gap": {
+                    "mean": mean_std(collect_train_metric(model_runs, "router_score_gap"))[0],
+                    "std": mean_std(collect_train_metric(model_runs, "router_score_gap"))[1],
+                },
                 "tokens_per_second": {
                     "mean": mean_std(collect_train_metric(model_runs, "tokens_per_second"))[0],
                     "std": mean_std(collect_train_metric(model_runs, "tokens_per_second"))[1],
@@ -354,8 +370,8 @@ def write_summary_markdown(
         "",
         "## Main Comparison",
         "",
-        "| Model | Final train loss | Final router mean | Eval throughput (tok/s) | Eval latency (ms/step) | Mean NIAH accuracy |",
-        "| --- | --- | --- | --- | --- | --- |",
+        "| Model | Final train loss | Router mean | Selected ratio | Score gap | Eval throughput (tok/s) | Eval latency (ms/step) | Mean NIAH accuracy |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for key in model_keys:
         model = summary["models"][key]
@@ -366,6 +382,8 @@ def write_summary_markdown(
                     model["label"],
                     fmt_plain(model["train"]["final_total_loss"]["mean"], model["train"]["final_total_loss"]["std"]),
                     fmt_plain(model["train"]["final_router_mean"]["mean"], model["train"]["final_router_mean"]["std"]),
+                    fmt_plain(model["train"]["final_router_selected_ratio"]["mean"], model["train"]["final_router_selected_ratio"]["std"]),
+                    fmt_plain(model["train"]["final_router_score_gap"]["mean"], model["train"]["final_router_score_gap"]["std"]),
                     fmt_plain(model["throughput"]["tokens_per_second"]["mean"], model["throughput"]["tokens_per_second"]["std"]),
                     fmt_plain(model["throughput"]["milliseconds_per_step"]["mean"], model["throughput"]["milliseconds_per_step"]["std"]),
                     fmt_plain(model["niah"]["mean_accuracy"]["mean"], model["niah"]["mean_accuracy"]["std"]),

@@ -170,6 +170,10 @@ def train() -> None:
             main_weight=float(loss_cfg["main_weight"]),
             router_weight=float(loss_cfg["router_weight"]),
             loss_mode=loss_mode,
+            router_mean_target=float(loss_cfg.get("router_mean_target", cfg["model"].get("router_ratio", 0.1))),
+            router_mean_weight=float(loss_cfg.get("router_mean_weight", 1.0)),
+            router_score_margin=float(loss_cfg.get("router_score_margin", 0.02)),
+            router_score_weight=float(loss_cfg.get("router_score_weight", 0.0)),
         )
         optimizer.zero_grad(set_to_none=True)
         losses.total.backward()
@@ -187,6 +191,10 @@ def train() -> None:
                 "main_loss": losses.main.item(),
                 "router_loss": losses.router.item(),
                 "router_mean": losses.router_mean.item(),
+                "router_selected_ratio": losses.router_selected_ratio.item(),
+                "router_selected_score_mean": losses.router_selected_score_mean.item(),
+                "router_unselected_score_mean": losses.router_unselected_score_mean.item(),
+                "router_score_gap": losses.router_score_gap.item(),
                 "tokens_per_second": throughput,
                 "device": str(device),
                 "seq_len": args.seq_len,
@@ -196,7 +204,10 @@ def train() -> None:
             print(
                 f"step={step} total_loss={losses.total.item():.4f} "
                 f"main_loss={losses.main.item():.4f} router_loss={losses.router.item():.4f} "
-                f"router_mean={losses.router_mean.item():.4f} tokens_per_second={throughput:.2f}"
+                f"router_mean={losses.router_mean.item():.4f} "
+                f"router_selected_ratio={losses.router_selected_ratio.item():.4f} "
+                f"router_score_gap={losses.router_score_gap.item():.4f} "
+                f"tokens_per_second={throughput:.2f}"
             )
             with log_path.open("a", encoding="utf-8") as handle:
                 handle.write(json.dumps(metrics) + "\n")
