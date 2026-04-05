@@ -37,7 +37,13 @@ def fmt(value: float | None, digits: int = 4) -> str:
 def pick_best_amht(summary: dict) -> str | None:
     candidates = [
         key
-        for key in ("amht_v4_stage1_round3", "amht_v4_stage1_tuned", "amht_v4_fast", "amht_v4_accurate")
+        for key in (
+            "amht_v4_stage1_round4",
+            "amht_v4_stage1_round3",
+            "amht_v4_stage1_tuned",
+            "amht_v4_fast",
+            "amht_v4_accurate",
+        )
         if key in summary.get("models", {})
     ]
     if not candidates:
@@ -132,9 +138,10 @@ def build_note(summary: dict) -> str:
             block.extend(
                 [
                     "Recommendation:",
-                    "- Backbone is the first suspect. Increase `ssm_state_size`, keep or enable `ssm_complex`, and test `ssm_conv_kernel=5` if not already used.",
+                    "- Backbone is the first suspect. Increase recurrent capacity first: raise `ssm_state_size`, or add one more SSM layer if state size is already high enough.",
+                    "- Keep `ssm_complex` and `ssm_conv_kernel=5` if they are already enabled; only revisit them if the next capacity run still misses quality.",
                     "- Use the Mamba-3-inspired baseline as a reference for recurrence strength, not as a reproduction target.",
-                    "- If the loss is also high, extend steps before widening the router search.",
+                    "- If the loss is also high, extend steps before widening attention or memory changes.",
                     "",
                 ]
             )
@@ -159,7 +166,8 @@ def build_note(summary: dict) -> str:
             block.extend(
                 [
                     "Recommendation:",
-                    "- Mixed result. Tune router-learning and memory path next: test `router_straight_through_temperature`, `router_straight_through_scale`, and `latent_tokens` while keeping the backbone fixed for this iteration.",
+                    "- Mixed result. Keep the backbone fixed and test longer training or memory/context changes next: `latent_tokens`, `router_neighbor_radius`, or `router_neighbor_bonus`.",
+                    "- Do not retune straight-through router settings unless `router_score_gap` falls back below the margin.",
                     "",
                 ]
             )

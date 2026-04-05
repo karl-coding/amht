@@ -248,11 +248,12 @@ def compute_loss(
         float(router_mean_weight) * router_mean_penalty
         + float(router_score_weight) * router_score_penalty
     )
-    total = main_weight * main_loss + router_weight * router_penalty
+    router_contribution = float(router_weight) * router_penalty
+    total = main_weight * main_loss + router_contribution
     return LossBreakdown(
         total=total,
         main=main_loss,
-        router=router_penalty,
+        router=router_contribution,
         router_mean=stats["router_mean"],
         router_selected_ratio=stats["router_selected_ratio"],
         router_selected_score_mean=stats["router_selected_score_mean"],

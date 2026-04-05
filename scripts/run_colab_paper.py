@@ -34,6 +34,13 @@ class ModelSpec:
 
 
 MODEL_SPECS = {
+    "amht_v4_stage1_round4": ModelSpec(
+        key="amht_v4_stage1_round4",
+        label="AMHT-V4-Stage1-R4",
+        config="train/config_amht_v4_stage1_round4.yaml",
+        color="#0b6e4f",
+        marker="X",
+    ),
     "amht_v4_stage1_round3": ModelSpec(
         key="amht_v4_stage1_round3",
         label="AMHT-V4-Stage1-R3",
@@ -80,6 +87,14 @@ MODEL_SPECS = {
 
 
 PRESETS = {
+    "stage1_round4": {
+        "models": ["amht_v4_stage1_round4", "transformer_v4_baseline", "mamba3_hybrid_baseline"],
+        "seeds": [42],
+        "steps_scale": 1.0,
+        "warmup_steps": 1,
+        "benchmark_steps": 2,
+        "eval_task": "all",
+    },
     "stage1_round3": {
         "models": ["amht_v4_stage1_round3", "transformer_v4_baseline", "mamba3_hybrid_baseline"],
         "seeds": [42],
@@ -119,7 +134,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run a Colab-friendly AMHT experiment pipeline: train, benchmark, aggregate, and optionally generate figures/tables."
     )
-    parser.add_argument("--preset", default="stage1_tuning", choices=sorted(PRESETS))
+    parser.add_argument("--preset", default="stage1_round4", choices=sorted(PRESETS))
     parser.add_argument("--models", default=None, help="Comma-separated model keys to override the preset model list")
     parser.add_argument("--seeds", default=None, help="Comma-separated seeds to override the preset seed list")
     parser.add_argument("--seq-len", type=int, default=8192, help="Training and primary evaluation sequence length")
