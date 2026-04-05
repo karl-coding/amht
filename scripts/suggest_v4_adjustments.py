@@ -72,6 +72,9 @@ def build_note(summary: dict) -> str:
     best_acc = metric(summary, best_amht, "niah", "mean_accuracy")
     best_tps = metric(summary, best_amht, "throughput", "tokens_per_second")
     best_loss = metric(summary, best_amht, "train", "final_total_loss")
+    best_router_loss = metric(summary, best_amht, "train", "final_router_loss")
+    best_router_mean = metric(summary, best_amht, "train", "final_router_mean")
+    router_collapsed = best_router_mean is not None and best_router_mean < 0.05
 
     lines.extend(
         [
@@ -81,6 +84,8 @@ def build_note(summary: dict) -> str:
             f"- Mean NIAH accuracy: `{fmt(best_acc)}`",
             f"- Throughput (tok/s): `{fmt(best_tps, 2)}`",
             f"- Final train loss: `{fmt(best_loss)}`",
+            f"- Final router loss: `{fmt(best_router_loss)}`",
+            f"- Final router mean: `{fmt(best_router_mean)}`",
             "",
         ]
     )
@@ -103,7 +108,16 @@ def build_note(summary: dict) -> str:
             "",
         ]
 
-        if acc_gap is not None and acc_gap < -0.02:
+        if router_collapsed and acc_gap is not None and acc_gap >= 0.0 and tps_gap is not None and tps_gap > 0.0:
+            block.extend(
+                [
+                    "Recommendation:",
+                    "- Quality and throughput are acceptable, but routing collapsed far below the target budget. Tune router-learning next: lower `router_straight_through_temperature`, raise `router_straight_through_scale`, and consider increasing `router_weight`.",
+                    "- Keep the stronger backbone fixed for this iteration so the next run isolates router and memory behavior.",
+                    "",
+                ]
+            )
+        elif acc_gap is not None and acc_gap < -0.02:
             block.extend(
                 [
                     "Recommendation:",
@@ -155,13 +169,28 @@ def build_note(summary: dict) -> str:
             "",
             "## Next Iteration Order",
             "",
-            "1. Stabilize or strengthen the recurrent backbone.",
-            "2. Re-run the same baseline comparison.",
-            "3. Tune router and latent memory only after backbone gains stop moving.",
-            "4. Delay paper-focused freezing until AMHT is consistently ahead on the chosen quality-efficiency target.",
-            "",
         ]
     )
+    if router_collapsed:
+        lines.extend(
+            [
+                "1. Restore routing toward the target budget with router-learning calibration.",
+                "2. Re-run the same baseline comparison at the same sequence length and steps.",
+                "3. Tune latent memory only if routing recovers but quality stays flat.",
+                "4. Return to backbone changes only if router tuning fails to improve retrieval.",
+                "",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                "1. Stabilize or strengthen the recurrent backbone.",
+                "2. Re-run the same baseline comparison.",
+                "3. Tune router and latent memory only after backbone gains stop moving.",
+                "4. Delay paper-focused freezing until AMHT is consistently ahead on the chosen quality-efficiency target.",
+                "",
+            ]
+        )
     return "\n".join(lines) + "\n"
 
 
