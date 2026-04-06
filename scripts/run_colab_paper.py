@@ -34,6 +34,13 @@ class ModelSpec:
 
 
 MODEL_SPECS = {
+    "amht_v4_stage2_round2": ModelSpec(
+        key="amht_v4_stage2_round2",
+        label="AMHT-V4-Stage2-R2",
+        config="train/config_amht_v4_stage2_round2.yaml",
+        color="#9a3412",
+        marker="H",
+    ),
     "amht_v4_stage2_round1": ModelSpec(
         key="amht_v4_stage2_round1",
         label="AMHT-V4-Stage2-R1",
@@ -115,6 +122,16 @@ MODEL_SPECS = {
 
 
 PRESETS = {
+    "stage2_round2": {
+        "models": ["amht_v4_stage2_round2", "transformer_v4_stage2_baseline", "mamba3_hybrid_v4_stage2_baseline"],
+        "seeds": [42],
+        "seq_len": 16384,
+        "steps_scale": 2.0,
+        "warmup_steps": 1,
+        "benchmark_steps": 2,
+        "eval_task": "all",
+        "niah_seq_len": 16384,
+    },
     "stage2_round1": {
         "models": ["amht_v4_stage2_round1", "transformer_v4_stage2_baseline", "mamba3_hybrid_v4_stage2_baseline"],
         "seeds": [42],
