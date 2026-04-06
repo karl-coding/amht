@@ -157,6 +157,20 @@ MODEL_SPECS = {
 
 
 PRESETS = {
+    "stage2_round4_validate": {
+        "models": [
+            "amht_v4_stage2_round4",
+            "transformer_v4_stage2_round4_baseline",
+            "mamba3_hybrid_v4_stage2_round4_baseline",
+        ],
+        "seeds": [42, 43, 44],
+        "seq_len": 16384,
+        "steps_scale": 2.0,
+        "warmup_steps": 1,
+        "benchmark_steps": 2,
+        "eval_task": "all",
+        "niah_seq_len": 16384,
+    },
     "stage2_round5": {
         "models": [
             "amht_v4_stage2_round5",
