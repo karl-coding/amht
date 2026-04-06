@@ -38,6 +38,7 @@ def pick_best_amht(summary: dict) -> str | None:
     candidates = [
         key
         for key in (
+            "amht_v4_stage2_round4",
             "amht_v4_stage2_round3",
             "amht_v4_stage2_round2",
             "amht_v4_stage2_round1",
@@ -68,8 +69,28 @@ def build_note(summary: dict) -> str:
 
     if best_amht and "stage2" in best_amht:
         stage_label = "2"
-        transformer = "transformer_v4_stage2_baseline" if "transformer_v4_stage2_baseline" in models else None
-        mamba_ref = "mamba3_hybrid_v4_stage2_baseline" if "mamba3_hybrid_v4_stage2_baseline" in models else None
+        transformer = next(
+            (
+                key
+                for key in (
+                    "transformer_v4_stage2_round4_baseline",
+                    "transformer_v4_stage2_baseline",
+                )
+                if key in models
+            ),
+            None,
+        )
+        mamba_ref = next(
+            (
+                key
+                for key in (
+                    "mamba3_hybrid_v4_stage2_round4_baseline",
+                    "mamba3_hybrid_v4_stage2_baseline",
+                )
+                if key in models
+            ),
+            None,
+        )
         intro = "Focus on hybrid specialization next. Keep the recurrent backbone fixed unless harder retrieval breaks the quality-efficiency tradeoff badly."
         favorable_line = "- This comparison is favorable for stage two: same-or-better quality at higher throughput on the harder retrieval setting."
     else:
