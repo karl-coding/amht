@@ -34,6 +34,13 @@ class ModelSpec:
 
 
 MODEL_SPECS = {
+    "amht_v4_stage2_round1": ModelSpec(
+        key="amht_v4_stage2_round1",
+        label="AMHT-V4-Stage2-R1",
+        config="train/config_amht_v4_stage2_round1.yaml",
+        color="#7c2d12",
+        marker="h",
+    ),
     "amht_v4_stage1_round4_long": ModelSpec(
         key="amht_v4_stage1_round4_long",
         label="AMHT-V4-Stage1-R4-Long",
@@ -83,6 +90,13 @@ MODEL_SPECS = {
         color="#f67280",
         marker="s",
     ),
+    "transformer_v4_stage2_baseline": ModelSpec(
+        key="transformer_v4_stage2_baseline",
+        label="Transformer",
+        config="train/config_transformer_v4_stage2_baseline.yaml",
+        color="#f67280",
+        marker="s",
+    ),
     "mamba3_hybrid_baseline": ModelSpec(
         key="mamba3_hybrid_baseline",
         label="Mamba-3-Inspired Hybrid",
@@ -90,13 +104,31 @@ MODEL_SPECS = {
         color="#2a9d8f",
         marker="D",
     ),
+    "mamba3_hybrid_v4_stage2_baseline": ModelSpec(
+        key="mamba3_hybrid_v4_stage2_baseline",
+        label="Mamba-3-Inspired Hybrid",
+        config="train/config_mamba3_hybrid_v4_stage2_baseline.yaml",
+        color="#2a9d8f",
+        marker="D",
+    ),
 }
 
 
 PRESETS = {
+    "stage2_round1": {
+        "models": ["amht_v4_stage2_round1", "transformer_v4_stage2_baseline", "mamba3_hybrid_v4_stage2_baseline"],
+        "seeds": [42],
+        "seq_len": 16384,
+        "steps_scale": 2.0,
+        "warmup_steps": 1,
+        "benchmark_steps": 2,
+        "eval_task": "all",
+        "niah_seq_len": 16384,
+    },
     "stage1_round4_validate": {
         "models": ["amht_v4_stage1_round4_long", "transformer_v4_baseline", "mamba3_hybrid_baseline"],
         "seeds": [42, 43, 44],
+        "seq_len": 8192,
         "steps_scale": 2.0,
         "warmup_steps": 1,
         "benchmark_steps": 2,
@@ -106,6 +138,7 @@ PRESETS = {
     "stage1_round4_long": {
         "models": ["amht_v4_stage1_round4_long", "transformer_v4_baseline", "mamba3_hybrid_baseline"],
         "seeds": [42],
+        "seq_len": 8192,
         "steps_scale": 2.0,
         "warmup_steps": 1,
         "benchmark_steps": 2,
@@ -114,6 +147,7 @@ PRESETS = {
     "stage1_round4": {
         "models": ["amht_v4_stage1_round4", "transformer_v4_baseline", "mamba3_hybrid_baseline"],
         "seeds": [42],
+        "seq_len": 8192,
         "steps_scale": 1.0,
         "warmup_steps": 1,
         "benchmark_steps": 2,
@@ -122,6 +156,7 @@ PRESETS = {
     "stage1_round3": {
         "models": ["amht_v4_stage1_round3", "transformer_v4_baseline", "mamba3_hybrid_baseline"],
         "seeds": [42],
+        "seq_len": 8192,
         "steps_scale": 1.0,
         "warmup_steps": 1,
         "benchmark_steps": 2,
@@ -130,6 +165,7 @@ PRESETS = {
     "stage1_tuning": {
         "models": ["amht_v4_stage1_tuned", "transformer_v4_baseline", "mamba3_hybrid_baseline"],
         "seeds": [42],
+        "seq_len": 8192,
         "steps_scale": 0.5,
         "warmup_steps": 1,
         "benchmark_steps": 2,
@@ -138,6 +174,7 @@ PRESETS = {
     "colab_quick": {
         "models": ["amht_v4_fast", "transformer_v4_baseline", "mamba3_hybrid_baseline"],
         "seeds": [42],
+        "seq_len": 8192,
         "steps_scale": 0.1,
         "warmup_steps": 1,
         "benchmark_steps": 2,
@@ -146,6 +183,7 @@ PRESETS = {
     "paper_v4": {
         "models": ["amht_v4_fast", "amht_v4_accurate", "transformer_v4_baseline", "mamba3_hybrid_baseline"],
         "seeds": [42, 43, 44],
+        "seq_len": 8192,
         "steps_scale": 1.0,
         "warmup_steps": 1,
         "benchmark_steps": 4,
@@ -161,7 +199,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--preset", default="stage1_round4_long", choices=sorted(PRESETS))
     parser.add_argument("--models", default=None, help="Comma-separated model keys to override the preset model list")
     parser.add_argument("--seeds", default=None, help="Comma-separated seeds to override the preset seed list")
-    parser.add_argument("--seq-len", type=int, default=8192, help="Training and primary evaluation sequence length")
+    parser.add_argument("--seq-len", type=int, default=None, help="Optional override for training and primary evaluation sequence length")
     parser.add_argument("--niah-seq-len", type=int, default=None, help="Optional override for NIAH evaluation sequence length")
     parser.add_argument("--device", default="auto", help="cpu, cuda, mps, or auto")
     parser.add_argument("--outdir", default=None, help="Output directory for checkpoints, raw runs, reports, and optional paper artifacts")
@@ -671,6 +709,7 @@ def main() -> None:
     preset = PRESETS[args.preset]
     model_keys = parse_model_list(args.models, list(preset["models"]))
     seeds = parse_int_list(args.seeds, list(preset["seeds"]))
+    seq_len = int(args.seq_len if args.seq_len is not None else preset.get("seq_len", 8192))
     steps_scale = float(args.steps_scale if args.steps_scale is not None else preset["steps_scale"])
     step_overrides = parse_steps_override(args.steps_override)
     warmup_steps = args.warmup_steps if args.warmup_steps is not None else int(preset["warmup_steps"])
@@ -690,7 +729,7 @@ def main() -> None:
         "preset": args.preset,
         "models": model_keys,
         "seeds": seeds,
-        "seq_len": args.seq_len,
+        "seq_len": seq_len,
         "device": args.device,
         "steps_scale": steps_scale,
         "warmup_steps": warmup_steps,
@@ -710,7 +749,7 @@ def main() -> None:
             for seed in seeds:
                 run_dir = runs_dir / model_key / f"seed{seed}"
                 run_dir.mkdir(parents=True, exist_ok=True)
-                checkpoint_path = run_dir / f"{model_key}_seed{seed}_seq{args.seq_len}.pt"
+                checkpoint_path = run_dir / f"{model_key}_seed{seed}_seq{seq_len}.pt"
                 train_log_path = run_dir / "train.jsonl"
                 eval_json_path = run_dir / "eval.json"
 
@@ -721,7 +760,7 @@ def main() -> None:
                         "--config",
                         spec.config,
                         "--seq-len",
-                        str(args.seq_len),
+                        str(seq_len),
                         "--steps",
                         str(steps),
                         "--device",
@@ -746,7 +785,7 @@ def main() -> None:
                         "--task",
                         eval_task,
                         "--seq-len",
-                        str(args.seq_len),
+                        str(seq_len),
                         "--device",
                         args.device,
                         "--seed",

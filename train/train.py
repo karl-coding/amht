@@ -139,16 +139,24 @@ def train() -> None:
     total_samples = (start_step + total_steps) * int(train_cfg["batch_size"])
     if dataset_type == "retrieval":
         niah_cfg = cfg["evaluation"]["niah"]
+        retrieval_cfg = dict(niah_cfg)
+        retrieval_cfg.update(data_cfg.get("retrieval", {}))
         dataset = RetrievalDataset(
             vocab_size=int(cfg["model"]["vocab_size"]),
             seq_len=args.seq_len,
             total_samples=total_samples,
-            pad_token=int(niah_cfg["pad_token"]),
-            key_start=int(niah_cfg["key_start"]),
-            value_start=int(niah_cfg["value_start"]),
-            num_pairs=int(niah_cfg["num_pairs"]),
-            num_keys=int(niah_cfg.get("num_keys", niah_cfg["num_pairs"])),
-            depth_choices=[float(depth) for depth in niah_cfg.get("needle_depths", [0.1, 0.3, 0.5, 0.7, 0.9])],
+            pad_token=int(retrieval_cfg["pad_token"]),
+            key_start=int(retrieval_cfg["key_start"]),
+            value_start=int(retrieval_cfg["value_start"]),
+            num_pairs=int(retrieval_cfg["num_pairs"]),
+            num_keys=int(retrieval_cfg.get("num_keys", retrieval_cfg["num_pairs"])),
+            depth_choices=[
+                float(depth)
+                for depth in retrieval_cfg.get(
+                    "depth_choices",
+                    retrieval_cfg.get("needle_depths", [0.1, 0.3, 0.5, 0.7, 0.9]),
+                )
+            ],
         )
     else:
         dataset = SyntheticDataset(

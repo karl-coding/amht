@@ -38,6 +38,7 @@ def pick_best_amht(summary: dict) -> str | None:
     candidates = [
         key
         for key in (
+            "amht_v4_stage2_round1",
             "amht_v4_stage1_round4_long",
             "amht_v4_stage1_round4",
             "amht_v4_stage1_round3",
@@ -61,14 +62,25 @@ def pick_best_amht(summary: dict) -> str | None:
 def build_note(summary: dict) -> str:
     models = summary.get("models", {})
     best_amht = pick_best_amht(summary)
-    transformer = "transformer_v4_baseline" if "transformer_v4_baseline" in models else None
-    mamba_ref = "mamba3_hybrid_baseline" if "mamba3_hybrid_baseline" in models else None
     quality_tie_tolerance = 0.02
 
+    if best_amht and "stage2" in best_amht:
+        stage_label = "2"
+        transformer = "transformer_v4_stage2_baseline" if "transformer_v4_stage2_baseline" in models else None
+        mamba_ref = "mamba3_hybrid_v4_stage2_baseline" if "mamba3_hybrid_v4_stage2_baseline" in models else None
+        intro = "Focus on hybrid specialization next. Keep the recurrent backbone fixed unless harder retrieval breaks the quality-efficiency tradeoff badly."
+        favorable_line = "- This comparison is favorable for stage two: same-or-better quality at higher throughput on the harder retrieval setting."
+    else:
+        stage_label = "1"
+        transformer = "transformer_v4_baseline" if "transformer_v4_baseline" in models else None
+        mamba_ref = "mamba3_hybrid_baseline" if "mamba3_hybrid_baseline" in models else None
+        intro = "Focus on training comparison first. Do not freeze the paper path until AMHT is consistently ahead of the baselines on the intended quality-efficiency tradeoff."
+        favorable_line = "- This comparison already matches the stage-one tradeoff target: same-or-better quality at higher throughput."
+
     lines: list[str] = [
-        "# Stage 1 Adjustment Note",
+        f"# Stage {stage_label} Adjustment Note",
         "",
-        "Focus on training comparison first. Do not freeze the paper path until AMHT is consistently ahead of the baselines on the intended quality-efficiency tradeoff.",
+        intro,
         "",
     ]
 
@@ -140,10 +152,19 @@ def build_note(summary: dict) -> str:
             block.extend(
                 [
                     "Recommendation:",
-                    "- Backbone is the first suspect. Increase recurrent capacity first: raise `ssm_state_size`, or add one more SSM layer if state size is already high enough.",
-                    "- Keep `ssm_complex` and `ssm_conv_kernel=5` if they are already enabled; only revisit them if the next capacity run still misses quality.",
-                    "- Use the Mamba-3-inspired baseline as a reference for recurrence strength, not as a reproduction target.",
-                    "- If the loss is also high, extend steps before widening attention or memory changes.",
+                    *(
+                        [
+                            "- Hybrid specialization is the first suspect. Keep the round-four backbone fixed and tune `router_neighbor_radius`, `router_neighbor_bonus`, `latent_tokens`, or memory I/O first.",
+                            "- Re-open backbone changes only if the harder retrieval setting still misses quality after at least one router or memory iteration.",
+                        ]
+                        if stage_label == "2"
+                        else [
+                            "- Backbone is the first suspect. Increase recurrent capacity first: raise `ssm_state_size`, or add one more SSM layer if state size is already high enough.",
+                            "- Keep `ssm_complex` and `ssm_conv_kernel=5` if they are already enabled; only revisit them if the next capacity run still misses quality.",
+                            "- Use the Mamba-3-inspired baseline as a reference for recurrence strength, not as a reproduction target.",
+                            "- If the loss is also high, extend steps before widening attention or memory changes.",
+                        ]
+                    ),
                     "",
                 ]
             )
@@ -160,7 +181,7 @@ def build_note(summary: dict) -> str:
             block.extend(
                 [
                     "Recommendation:",
-                    "- This comparison already matches the stage-one tradeoff target: same-or-better quality at higher throughput.",
+                    favorable_line,
                     "- Keep the architecture stable and validate it next with extra seeds, harder retrieval, or `16K/32K` before making new architectural changes.",
                     "",
                 ]
@@ -169,7 +190,7 @@ def build_note(summary: dict) -> str:
             block.extend(
                 [
                     "Recommendation:",
-                    "- Mixed result. Keep the backbone fixed and test longer training or memory/context changes next: `latent_tokens`, `router_neighbor_radius`, or `router_neighbor_bonus`.",
+                    "- Mixed result. Keep the backbone fixed and test longer training or memory/context changes next: `latent_tokens`, `router_neighbor_radius`, `router_neighbor_bonus`, or memory I/O.",
                     "- Do not retune straight-through router settings unless `router_score_gap` falls back below the margin.",
                     "",
                 ]
@@ -205,10 +226,21 @@ def build_note(summary: dict) -> str:
     if quality_deficit:
         lines.extend(
             [
-                "1. Stabilize or strengthen the recurrent backbone.",
-                "2. Re-run the same baseline comparison.",
-                "3. Tune router and latent memory only after backbone gains stop moving.",
-                "4. Delay paper-focused freezing until AMHT is consistently ahead on the chosen quality-efficiency target.",
+                *(
+                    [
+                        "1. Keep the round-four backbone fixed and tune router or memory behavior first.",
+                        "2. Re-run the same harder retrieval comparison.",
+                        "3. Re-open backbone changes only if hybrid tuning fails to recover quality.",
+                        "4. Delay paper-focused freezing until AMHT stays ahead on the harder retrieval setting.",
+                    ]
+                    if stage_label == "2"
+                    else [
+                        "1. Stabilize or strengthen the recurrent backbone.",
+                        "2. Re-run the same baseline comparison.",
+                        "3. Tune router and latent memory only after backbone gains stop moving.",
+                        "4. Delay paper-focused freezing until AMHT is consistently ahead on the chosen quality-efficiency target.",
+                    ]
+                ),
                 "",
             ]
         )
@@ -235,20 +267,42 @@ def build_note(summary: dict) -> str:
     elif favorable_tradeoff:
         lines.extend(
             [
-                "1. Keep the round-four backbone fixed as the current stage-one winner.",
-                "2. Validate the same comparison with extra seeds and longer contexts.",
-                "3. Test harder retrieval or `16K/32K` before making new architectural changes.",
-                "4. Re-open backbone or router tuning only if validation breaks the quality-efficiency tradeoff.",
+                *(
+                    [
+                        "1. Keep the round-four backbone fixed as the stage-two starting point.",
+                        "2. Tune router or memory specialization only if harder retrieval still leaves quality headroom.",
+                        "3. Validate at `16K/32K` and add distribution shift before making new architectural changes.",
+                        "4. Re-open backbone tuning only if the harder retrieval setting breaks the quality-efficiency tradeoff.",
+                    ]
+                    if stage_label == "2"
+                    else [
+                        "1. Keep the round-four backbone fixed as the current stage-one winner.",
+                        "2. Validate the same comparison with extra seeds and longer contexts.",
+                        "3. Test harder retrieval or `16K/32K` before making new architectural changes.",
+                        "4. Re-open backbone or router tuning only if validation breaks the quality-efficiency tradeoff.",
+                    ]
+                ),
                 "",
             ]
         )
     else:
         lines.extend(
             [
-                "1. Stabilize or strengthen the recurrent backbone.",
-                "2. Re-run the same baseline comparison.",
-                "3. Tune router and latent memory only after backbone gains stop moving.",
-                "4. Delay paper-focused freezing until AMHT is consistently ahead on the chosen quality-efficiency target.",
+                *(
+                    [
+                        "1. Keep the round-four backbone fixed and tune router or memory specialization first.",
+                        "2. Re-run the same harder retrieval comparison.",
+                        "3. Add longer-context or held-out retrieval only after hybrid gains stop moving.",
+                        "4. Re-open backbone changes only if stage-two tuning fails to improve the tradeoff.",
+                    ]
+                    if stage_label == "2"
+                    else [
+                        "1. Stabilize or strengthen the recurrent backbone.",
+                        "2. Re-run the same baseline comparison.",
+                        "3. Tune router and latent memory only after backbone gains stop moving.",
+                        "4. Delay paper-focused freezing until AMHT is consistently ahead on the chosen quality-efficiency target.",
+                    ]
+                ),
                 "",
             ]
         )
