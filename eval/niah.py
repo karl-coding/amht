@@ -56,9 +56,28 @@ def evaluate_niah_hits(logits: torch.Tensor, expected: torch.Tensor) -> float:
 
 
 @torch.no_grad()
+def evaluate_niah_hits_chunked(
+    model,
+    tokens: torch.Tensor,
+    expected: torch.Tensor,
+    forward_batch_size: int,
+) -> float:
+    total_correct = 0
+    total_items = 0
+    for start in range(0, tokens.size(0), forward_batch_size):
+        end = min(start + forward_batch_size, tokens.size(0))
+        logits, _ = model(tokens[start:end, :-1])
+        pred = logits[:, -1].argmax(dim=-1)
+        total_correct += int((pred == expected[start:end]).sum().item())
+        total_items += end - start
+    return float(total_correct) / max(total_items, 1)
+
+
+@torch.no_grad()
 def benchmark_niah(model, cfg: dict, device: torch.device) -> dict:
     niah_cfg = cfg["evaluation"]["niah"]
     batch_size = int(niah_cfg.get("batch_size", cfg["evaluation"]["batch_size"]))
+    forward_batch_size = int(niah_cfg.get("forward_batch_size", batch_size))
     repeats = int(niah_cfg.get("repeats", 1))
     scores = []
     for depth in niah_cfg["needle_depths"]:
@@ -76,14 +95,21 @@ def benchmark_niah(model, cfg: dict, device: torch.device) -> dict:
                 depth=float(depth),
                 device=device,
             )
-            logits, _ = model(tokens[:, :-1])
-            depth_scores.append(evaluate_niah_hits(logits=logits, expected=answer_ids))
+            depth_scores.append(
+                evaluate_niah_hits_chunked(
+                    model=model,
+                    tokens=tokens,
+                    expected=answer_ids,
+                    forward_batch_size=forward_batch_size,
+                )
+            )
         scores.append(mean(depth_scores) if depth_scores else 0.0)
     return {
         "task": "niah",
         "device": str(device),
         "seq_len": int(niah_cfg["seq_len"]),
         "batch_size": batch_size,
+        "forward_batch_size": forward_batch_size,
         "repeats": repeats,
         "needle_depths": list(niah_cfg["needle_depths"]),
         "accuracy_by_depth": scores,

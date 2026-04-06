@@ -47,6 +47,7 @@ evaluation:
   niah:
     seq_len: 16384
     batch_size: 4
+    forward_batch_size: 1
     repeats: 4
     needle_depths: [0.05, 0.2, 0.4, 0.6, 0.8, 0.92, 0.98]
     key_start: 100
