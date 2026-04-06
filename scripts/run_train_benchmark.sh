@@ -10,7 +10,7 @@ else
   PYTHON_BIN="${PYTHON_BIN:-python3}"
 fi
 
-PRESET="${AMHT_PRESET:-stage1_round4}"
+PRESET="${AMHT_PRESET:-stage1_round4_long}"
 DEVICE="${AMHT_DEVICE:-auto}"
 OUTDIR="${AMHT_OUTDIR:-}"
 

@@ -63,6 +63,7 @@ def build_note(summary: dict) -> str:
     best_amht = pick_best_amht(summary)
     transformer = "transformer_v4_baseline" if "transformer_v4_baseline" in models else None
     mamba_ref = "mamba3_hybrid_baseline" if "mamba3_hybrid_baseline" in models else None
+    quality_tie_tolerance = 0.02
 
     lines: list[str] = [
         "# Stage 1 Adjustment Note",
@@ -85,7 +86,7 @@ def build_note(summary: dict) -> str:
     best_router_selected_score_mean = metric(summary, best_amht, "train", "final_router_selected_score_mean")
     best_router_unselected_score_mean = metric(summary, best_amht, "train", "final_router_unselected_score_mean")
     best_router_score_gap = metric(summary, best_amht, "train", "final_router_score_gap")
-    router_score_collapsed = best_router_score_gap is not None and best_router_score_gap < 0.02
+    router_score_collapsed = best_router_score_gap is not None and best_router_score_gap < quality_tie_tolerance
     comparison_gaps: list[tuple[float | None, float | None]] = []
 
     lines.extend(
@@ -135,7 +136,7 @@ def build_note(summary: dict) -> str:
                     "",
                 ]
             )
-        elif acc_gap is not None and acc_gap < -0.02:
+        elif acc_gap is not None and acc_gap < -quality_tie_tolerance:
             block.extend(
                 [
                     "Recommendation:",
@@ -146,7 +147,7 @@ def build_note(summary: dict) -> str:
                     "",
                 ]
             )
-        elif tps_gap is not None and tps_gap < 0.0 and (acc_gap is None or acc_gap <= 0.02):
+        elif tps_gap is not None and tps_gap < 0.0 and (acc_gap is None or acc_gap <= quality_tie_tolerance):
             block.extend(
                 [
                     "Recommendation:",
@@ -155,11 +156,12 @@ def build_note(summary: dict) -> str:
                     "",
                 ]
             )
-        elif acc_gap is not None and acc_gap > 0.0 and tps_gap is not None and tps_gap > 0.0:
+        elif acc_gap is not None and acc_gap >= -quality_tie_tolerance and tps_gap is not None and tps_gap > 0.0:
             block.extend(
                 [
                     "Recommendation:",
-                    "- This comparison is already favorable. Keep the architecture stable and test longer steps, harder retrieval, or `16K/32K` before making new architectural changes.",
+                    "- This comparison already matches the stage-one tradeoff target: same-or-better quality at higher throughput.",
+                    "- Keep the architecture stable and validate it next with extra seeds, harder retrieval, or `16K/32K` before making new architectural changes.",
                     "",
                 ]
             )
@@ -191,9 +193,13 @@ def build_note(summary: dict) -> str:
             "",
         ]
     )
-    quality_deficit = any(acc_gap is not None and acc_gap < -0.02 for acc_gap, _ in comparison_gaps)
+    quality_deficit = any(acc_gap is not None and acc_gap < -quality_tie_tolerance for acc_gap, _ in comparison_gaps)
     throughput_deficit = any(
-        tps_gap is not None and tps_gap < 0.0 and (acc_gap is None or acc_gap <= 0.02)
+        tps_gap is not None and tps_gap < 0.0 and (acc_gap is None or acc_gap <= quality_tie_tolerance)
+        for acc_gap, tps_gap in comparison_gaps
+    )
+    favorable_tradeoff = bool(comparison_gaps) and all(
+        acc_gap is not None and acc_gap >= -quality_tie_tolerance and tps_gap is not None and tps_gap > 0.0
         for acc_gap, tps_gap in comparison_gaps
     )
     if quality_deficit:
@@ -223,6 +229,16 @@ def build_note(summary: dict) -> str:
                 "2. Re-run the same baseline comparison at the same sequence length and steps.",
                 "3. Tune latent memory only if score separation improves but quality stays flat.",
                 "4. Return to backbone changes only if router tuning fails to improve retrieval.",
+                "",
+            ]
+        )
+    elif favorable_tradeoff:
+        lines.extend(
+            [
+                "1. Keep the round-four backbone fixed as the current stage-one winner.",
+                "2. Validate the same comparison with extra seeds and longer contexts.",
+                "3. Test harder retrieval or `16K/32K` before making new architectural changes.",
+                "4. Re-open backbone or router tuning only if validation breaks the quality-efficiency tradeoff.",
                 "",
             ]
         )

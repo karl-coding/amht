@@ -149,7 +149,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run a Colab-friendly AMHT experiment pipeline: train, benchmark, aggregate, and optionally generate figures/tables."
     )
-    parser.add_argument("--preset", default="stage1_round4", choices=sorted(PRESETS))
+    parser.add_argument("--preset", default="stage1_round4_long", choices=sorted(PRESETS))
     parser.add_argument("--models", default=None, help="Comma-separated model keys to override the preset model list")
     parser.add_argument("--seeds", default=None, help="Comma-separated seeds to override the preset seed list")
     parser.add_argument("--seq-len", type=int, default=8192, help="Training and primary evaluation sequence length")
