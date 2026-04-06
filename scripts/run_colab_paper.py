@@ -376,6 +376,10 @@ def run_command(cmd: list[str]) -> None:
     subprocess.run(cmd, cwd=ROOT, check=True)
 
 
+def warn(message: str) -> None:
+    print(f"warning={message}", flush=True)
+
+
 def load_eval(path: Path) -> dict[str, dict]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     if isinstance(payload, dict):
@@ -983,22 +987,37 @@ def main() -> None:
             run_dir = runs_dir / model_key / f"seed{seed}"
             train_log_path = run_dir / "train.jsonl"
             eval_json_path = run_dir / "eval.json"
-            if not train_log_path.exists():
-                raise SystemExit(f"Missing train log: {train_log_path}")
             if not eval_json_path.exists():
+                if args.skip_eval:
+                    warn(f"missing_eval_json={eval_json_path}")
+                    continue
                 raise SystemExit(f"Missing eval JSON: {eval_json_path}")
-            train_log = load_train_log(train_log_path)
-            if not train_log:
-                raise SystemExit(f"Empty train log: {train_log_path}")
+            train_log: list[dict] = []
+            train_final: dict = {}
+            if train_log_path.exists():
+                train_log = load_train_log(train_log_path)
+                if train_log:
+                    train_final = train_log[-1]
+                elif not args.skip_train:
+                    raise SystemExit(f"Empty train log: {train_log_path}")
+                else:
+                    warn(f"empty_train_log={train_log_path}")
+            elif not args.skip_train:
+                raise SystemExit(f"Missing train log: {train_log_path}")
+            else:
+                warn(f"missing_train_log={train_log_path}")
             runs_by_model[model_key].append(
                 {
                     "seed": seed,
                     "train_log": train_log,
-                    "train_final": train_log[-1],
+                    "train_final": train_final,
                     "eval": load_eval(eval_json_path),
                     "run_dir": str(run_dir),
                 }
             )
+
+    if not any(runs_by_model.values()):
+        raise SystemExit("No completed runs found for report generation.")
 
     summary = build_summary(
         runs_by_model,
