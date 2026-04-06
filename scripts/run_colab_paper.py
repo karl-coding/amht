@@ -442,6 +442,23 @@ def collect_niah_depth(model_runs: list[dict], depth_index: int) -> list[float]:
     return values
 
 
+def niah_run_counts(run: dict) -> tuple[int | None, int | None]:
+    item = run.get("eval", {}).get("niah", {})
+    batch_size = item.get("batch_size")
+    repeats = item.get("repeats")
+    accuracy_by_depth = item.get("accuracy_by_depth", [])
+    if not isinstance(batch_size, int) or not isinstance(repeats, int) or not accuracy_by_depth:
+        return None, None
+    cases_per_depth = batch_size * repeats
+    total_hits = 0
+    for score in accuracy_by_depth:
+        if not isinstance(score, (int, float)):
+            return None, None
+        total_hits += int(round(float(score) * cases_per_depth))
+    total_cases = cases_per_depth * len(accuracy_by_depth)
+    return total_hits, total_cases
+
+
 def collect_train_metric(model_runs: list[dict], field: str) -> list[float]:
     values: list[float] = []
     for run in model_runs:
@@ -466,10 +483,27 @@ def latex_table(headers: list[str], rows: list[list[str]]) -> str:
     return "\n".join(lines)
 
 
-def build_summary(runs_by_model: dict[str, list[dict]], model_keys: list[str]) -> dict:
+def build_summary(
+    runs_by_model: dict[str, list[dict]],
+    model_keys: list[str],
+    *,
+    seed_count: int,
+    eval_task: str,
+    warmup_steps: int,
+    benchmark_steps: int,
+) -> dict:
     summary: dict[str, dict] = {}
     for key in model_keys:
         model_runs = runs_by_model[key]
+        niah_hits_by_seed: list[float] = []
+        niah_cases_by_seed: list[int] = []
+        for run in model_runs:
+            hits, cases = niah_run_counts(run)
+            if hits is not None and cases is not None:
+                niah_hits_by_seed.append(float(hits))
+                niah_cases_by_seed.append(cases)
+        niah_hits_mean, niah_hits_std = mean_std(niah_hits_by_seed)
+        cases_per_seed = niah_cases_by_seed[0] if niah_cases_by_seed and all(cases == niah_cases_by_seed[0] for cases in niah_cases_by_seed) else None
         summary[key] = {
             "label": MODEL_SPECS[key].label,
             "train": {
@@ -524,7 +558,14 @@ def build_summary(runs_by_model: dict[str, list[dict]], model_keys: list[str]) -
                 "mean_accuracy": {
                     "mean": mean_std(collect_eval_metric(model_runs, "niah", "mean_accuracy"))[0],
                     "std": mean_std(collect_eval_metric(model_runs, "niah", "mean_accuracy"))[1],
-                }
+                },
+                "hits_per_seed": {
+                    "mean": niah_hits_mean,
+                    "std": niah_hits_std,
+                },
+                "cases_per_seed": cases_per_seed,
+                "aggregate_hits": int(sum(int(hits) for hits in niah_hits_by_seed)),
+                "aggregate_cases": int(sum(niah_cases_by_seed)),
             },
         }
 
@@ -557,6 +598,10 @@ def build_summary(runs_by_model: dict[str, list[dict]], model_keys: list[str]) -
     return {
         "models": summary,
         "depths": depths,
+        "seed_count": seed_count,
+        "eval_task": eval_task,
+        "warmup_steps": warmup_steps,
+        "benchmark_steps": benchmark_steps,
         "primary_seq_len": primary_seq_len,
         "niah_seq_len": niah_seq_len,
         "scaling_lengths": scaling_lengths,
@@ -569,6 +614,12 @@ def write_summary_markdown(
     model_keys: list[str],
     run_dir: Path,
 ) -> None:
+    primary_seq_len = summary.get("primary_seq_len")
+    primary_throughput_label = "Primary throughput benchmark (tok/s)"
+    primary_latency_label = "Primary throughput latency (ms/step)"
+    if primary_seq_len is not None:
+        primary_throughput_label = f"Primary throughput @ {primary_seq_len} (tok/s)"
+        primary_latency_label = f"Primary latency @ {primary_seq_len} (ms/step)"
     lines = [
         "# AMHT Training Summary",
         "",
@@ -577,14 +628,24 @@ def write_summary_markdown(
         "",
         "## Main Comparison",
         "",
-        "| Model | Final train loss | Router mean | Selected ratio | Score gap | Eval throughput (tok/s) | Eval latency (ms/step) | Mean NIAH accuracy |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- |",
+        "| Model | Final train loss | Router mean | Selected ratio | Score gap | "
+        + primary_throughput_label
+        + " | "
+        + primary_latency_label
+        + " | Mean NIAH accuracy | NIAH hits |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     metadata_lines: list[str] = []
+    metadata_lines.append(f"- Seeds: `{summary.get('seed_count', 0)}`")
+    metadata_lines.append("- Tabulated metrics use `mean +- std` across seeds.")
+    metadata_lines.append(
+        f"- Primary throughput metric: the eval bundle's `throughput` section, using `{summary.get('warmup_steps', '-')}` warmup step(s) and `{summary.get('benchmark_steps', '-')}` timed benchmark step(s)."
+    )
     if summary.get("primary_seq_len") is not None:
         metadata_lines.append(f"- Primary throughput seq_len: `{summary['primary_seq_len']}`")
     if summary.get("niah_seq_len") is not None:
         metadata_lines.append(f"- NIAH seq_len: `{summary['niah_seq_len']}`")
+    metadata_lines.append("- NIAH hits aggregate exact correct retrievals across all depths and all seeds.")
     if metadata_lines:
         lines[4:4] = metadata_lines + [""]
     for key in model_keys:
@@ -601,6 +662,7 @@ def write_summary_markdown(
                     fmt_plain(model["throughput"]["tokens_per_second"]["mean"], model["throughput"]["tokens_per_second"]["std"]),
                     fmt_plain(model["throughput"]["milliseconds_per_step"]["mean"], model["throughput"]["milliseconds_per_step"]["std"]),
                     fmt_plain(model["niah"]["mean_accuracy"]["mean"], model["niah"]["mean_accuracy"]["std"]),
+                    f"{model['niah']['aggregate_hits']} / {model['niah']['aggregate_cases']}",
                 ]
             )
             + " |"
@@ -621,6 +683,12 @@ def write_summary_markdown(
 
 def write_latex_tables(out_path: Path, summary: dict, runs_by_model: dict[str, list[dict]], model_keys: list[str]) -> None:
     main_rows = []
+    primary_seq_len = summary.get("primary_seq_len")
+    throughput_header = "Primary Throughput"
+    latency_header = "Primary Latency"
+    if primary_seq_len is not None:
+        throughput_header = f"Primary Throughput @ {primary_seq_len}"
+        latency_header = f"Primary Latency @ {primary_seq_len}"
     for key in model_keys:
         model = summary["models"][key]
         main_rows.append(
@@ -630,6 +698,7 @@ def write_latex_tables(out_path: Path, summary: dict, runs_by_model: dict[str, l
                 fmt(model["throughput"]["tokens_per_second"]["mean"], model["throughput"]["tokens_per_second"]["std"]),
                 fmt(model["throughput"]["milliseconds_per_step"]["mean"], model["throughput"]["milliseconds_per_step"]["std"]),
                 fmt(model["niah"]["mean_accuracy"]["mean"], model["niah"]["mean_accuracy"]["std"]),
+                f"{model['niah']['aggregate_hits']} / {model['niah']['aggregate_cases']}",
             ]
         )
 
@@ -638,7 +707,7 @@ def write_latex_tables(out_path: Path, summary: dict, runs_by_model: dict[str, l
         "",
         "% Main comparison",
         latex_table(
-            ["Model", "Train Loss", "Throughput", "Latency", "Mean NIAH"],
+            ["Model", "Train Loss", throughput_header, latency_header, "Mean NIAH", "NIAH Hits"],
             main_rows,
         ),
     ]
@@ -931,7 +1000,14 @@ def main() -> None:
                 }
             )
 
-    summary = build_summary(runs_by_model, model_keys)
+    summary = build_summary(
+        runs_by_model,
+        model_keys,
+        seed_count=len(seeds),
+        eval_task=eval_task,
+        warmup_steps=warmup_steps,
+        benchmark_steps=benchmark_steps,
+    )
     (report_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     write_summary_markdown(report_dir / "summary.md", summary, model_keys, outdir)
     write_latex_tables(report_dir / "paper_tables.tex", summary, runs_by_model, model_keys)
