@@ -38,6 +38,7 @@ def pick_best_amht(summary: dict) -> str | None:
     candidates = [
         key
         for key in (
+            "amht_v4_stage2_round3",
             "amht_v4_stage2_round2",
             "amht_v4_stage2_round1",
             "amht_v4_stage1_round4_long",
@@ -143,9 +144,20 @@ def build_note(summary: dict) -> str:
             block.extend(
                 [
                     "Recommendation:",
-                    "- Quality and throughput are acceptable, and actual selected ratio is controlled by top-k. The issue is score calibration: selected and unselected blocks are no longer well separated.",
-                    "- Tune router-learning next: lower `router_straight_through_temperature`, raise `router_straight_through_scale`, and consider increasing `router_weight` only if score separation stays weak.",
-                    "- Keep the stronger backbone fixed for this iteration so the next run isolates router and memory behavior.",
+                    *(
+                        [
+                            "- Quality and throughput are acceptable, and actual selected ratio is controlled by top-k. The issue is score calibration: selected and unselected blocks are still too close under the harder stage-two setting.",
+                            "- Keep the current straight-through settings, then raise `router_score_margin` and `router_score_weight` so the score-separation loss stays meaningful near the margin.",
+                            "- Increase NIAH sampling density with `evaluation.niah.batch_size` or `evaluation.niah.repeats` before reading small quality moves as real.",
+                            "- Keep the stronger backbone fixed for this iteration so the next run isolates router and memory behavior.",
+                        ]
+                        if stage_label == "2"
+                        else [
+                            "- Quality and throughput are acceptable, and actual selected ratio is controlled by top-k. The issue is score calibration: selected and unselected blocks are no longer well separated.",
+                            "- Tune router-learning next: lower `router_straight_through_temperature`, raise `router_straight_through_scale`, and consider increasing `router_weight` only if score separation stays weak.",
+                            "- Keep the stronger backbone fixed for this iteration so the next run isolates router and memory behavior.",
+                        ]
+                    ),
                     "",
                 ]
             )
@@ -258,10 +270,21 @@ def build_note(summary: dict) -> str:
     elif router_score_collapsed:
         lines.extend(
             [
-                "1. Improve router score separation while keeping the top-k compute budget fixed.",
-                "2. Re-run the same baseline comparison at the same sequence length and steps.",
-                "3. Tune latent memory only if score separation improves but quality stays flat.",
-                "4. Return to backbone changes only if router tuning fails to improve retrieval.",
+                *(
+                    [
+                        "1. Increase NIAH sampling density so stage-two quality changes are measurable without changing throughput benchmarking.",
+                        "2. Improve router score separation while keeping the top-k compute budget fixed.",
+                        "3. Tune latent memory only if score separation improves but quality stays flat.",
+                        "4. Return to backbone changes only if stronger router supervision still fails to improve retrieval.",
+                    ]
+                    if stage_label == "2"
+                    else [
+                        "1. Improve router score separation while keeping the top-k compute budget fixed.",
+                        "2. Re-run the same baseline comparison at the same sequence length and steps.",
+                        "3. Tune latent memory only if score separation improves but quality stays flat.",
+                        "4. Return to backbone changes only if router tuning fails to improve retrieval.",
+                    ]
+                ),
                 "",
             ]
         )

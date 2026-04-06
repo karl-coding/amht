@@ -58,26 +58,33 @@ def evaluate_niah_hits(logits: torch.Tensor, expected: torch.Tensor) -> float:
 @torch.no_grad()
 def benchmark_niah(model, cfg: dict, device: torch.device) -> dict:
     niah_cfg = cfg["evaluation"]["niah"]
+    batch_size = int(niah_cfg.get("batch_size", cfg["evaluation"]["batch_size"]))
+    repeats = int(niah_cfg.get("repeats", 1))
     scores = []
     for depth in niah_cfg["needle_depths"]:
-        tokens, answer_ids = build_niah_batch(
-            batch_size=int(cfg["evaluation"]["batch_size"]),
-            seq_len=int(niah_cfg["seq_len"]),
-            vocab_size=int(cfg["model"]["vocab_size"]),
-            pad_token=int(niah_cfg["pad_token"]),
-            key_start=int(niah_cfg["key_start"]),
-            value_start=int(niah_cfg["value_start"]),
-            num_pairs=int(niah_cfg["num_pairs"]),
-            num_keys=int(niah_cfg.get("num_keys", niah_cfg["num_pairs"])),
-            depth=float(depth),
-            device=device,
-        )
-        logits, _ = model(tokens[:, :-1])
-        scores.append(evaluate_niah_hits(logits=logits, expected=answer_ids))
+        depth_scores = []
+        for _ in range(repeats):
+            tokens, answer_ids = build_niah_batch(
+                batch_size=batch_size,
+                seq_len=int(niah_cfg["seq_len"]),
+                vocab_size=int(cfg["model"]["vocab_size"]),
+                pad_token=int(niah_cfg["pad_token"]),
+                key_start=int(niah_cfg["key_start"]),
+                value_start=int(niah_cfg["value_start"]),
+                num_pairs=int(niah_cfg["num_pairs"]),
+                num_keys=int(niah_cfg.get("num_keys", niah_cfg["num_pairs"])),
+                depth=float(depth),
+                device=device,
+            )
+            logits, _ = model(tokens[:, :-1])
+            depth_scores.append(evaluate_niah_hits(logits=logits, expected=answer_ids))
+        scores.append(mean(depth_scores) if depth_scores else 0.0)
     return {
         "task": "niah",
         "device": str(device),
         "seq_len": int(niah_cfg["seq_len"]),
+        "batch_size": batch_size,
+        "repeats": repeats,
         "needle_depths": list(niah_cfg["needle_depths"]),
         "accuracy_by_depth": scores,
         "mean_accuracy": mean(scores) if scores else 0.0,

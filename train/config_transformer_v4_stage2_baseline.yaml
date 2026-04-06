@@ -46,6 +46,8 @@ evaluation:
   scaling_lengths: [1024, 2048, 4096, 8192, 16384, 32768]
   niah:
     seq_len: 16384
+    batch_size: 4
+    repeats: 4
     needle_depths: [0.05, 0.2, 0.4, 0.6, 0.8, 0.92, 0.98]
     key_start: 100
     value_start: 1000

@@ -96,6 +96,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--task", default="throughput", choices=["throughput", "niah", "scaling", "all"])
     parser.add_argument("--seq-len", type=int, default=8192, help="Primary context length")
     parser.add_argument("--niah-seq-len", type=int, default=None, help="Optional override for evaluation.niah.seq_len")
+    parser.add_argument("--niah-batch-size", type=int, default=None, help="Optional override for evaluation.niah.batch_size")
+    parser.add_argument("--niah-repeats", type=int, default=None, help="Optional override for evaluation.niah.repeats")
     parser.add_argument("--device", default="auto", help="cpu, cuda, mps, or auto")
     parser.add_argument("--seed", type=int, default=None, help="Optional random seed override")
     parser.add_argument("--save-json", default=None, help="Optional path to save benchmark JSON output")
@@ -149,6 +151,10 @@ def main() -> None:
         cfg.setdefault("evaluation", {})["benchmark_steps"] = int(args.benchmark_steps)
     if args.niah_seq_len is not None:
         cfg.setdefault("evaluation", {}).setdefault("niah", {})["seq_len"] = int(args.niah_seq_len)
+    if args.niah_batch_size is not None:
+        cfg.setdefault("evaluation", {}).setdefault("niah", {})["batch_size"] = int(args.niah_batch_size)
+    if args.niah_repeats is not None:
+        cfg.setdefault("evaluation", {}).setdefault("niah", {})["repeats"] = int(args.niah_repeats)
     if args.seq_len > cfg["model"]["max_seq_len"]:
         raise SystemExit(
             f"--seq-len {args.seq_len} exceeds config model.max_seq_len={cfg['model']['max_seq_len']}"
