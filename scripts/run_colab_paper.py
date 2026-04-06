@@ -94,6 +94,15 @@ MODEL_SPECS = {
 
 
 PRESETS = {
+    "stage1_round4_validate": {
+        "models": ["amht_v4_stage1_round4_long", "transformer_v4_baseline", "mamba3_hybrid_baseline"],
+        "seeds": [42, 43, 44],
+        "steps_scale": 2.0,
+        "warmup_steps": 1,
+        "benchmark_steps": 2,
+        "eval_task": "all",
+        "niah_seq_len": 16384,
+    },
     "stage1_round4_long": {
         "models": ["amht_v4_stage1_round4_long", "transformer_v4_baseline", "mamba3_hybrid_baseline"],
         "seeds": [42],
@@ -153,6 +162,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--models", default=None, help="Comma-separated model keys to override the preset model list")
     parser.add_argument("--seeds", default=None, help="Comma-separated seeds to override the preset seed list")
     parser.add_argument("--seq-len", type=int, default=8192, help="Training and primary evaluation sequence length")
+    parser.add_argument("--niah-seq-len", type=int, default=None, help="Optional override for NIAH evaluation sequence length")
     parser.add_argument("--device", default="auto", help="cpu, cuda, mps, or auto")
     parser.add_argument("--outdir", default=None, help="Output directory for checkpoints, raw runs, reports, and optional paper artifacts")
     parser.add_argument("--steps-scale", type=float, default=None, help="Scale configured train steps by this factor")
@@ -377,10 +387,18 @@ def build_summary(runs_by_model: dict[str, list[dict]], model_keys: list[str]) -
         }
 
     depths = []
+    niah_seq_len = None
+    primary_seq_len = None
     for key in model_keys:
         model_runs = runs_by_model[key]
         if model_runs:
             depths = list(model_runs[0].get("eval", {}).get("niah", {}).get("needle_depths", []))
+            candidate_niah_seq_len = model_runs[0].get("eval", {}).get("niah", {}).get("seq_len")
+            if isinstance(candidate_niah_seq_len, int):
+                niah_seq_len = candidate_niah_seq_len
+            candidate_primary_seq_len = model_runs[0].get("eval", {}).get("throughput", {}).get("seq_len")
+            if isinstance(candidate_primary_seq_len, int):
+                primary_seq_len = candidate_primary_seq_len
             if depths:
                 break
 
@@ -397,6 +415,8 @@ def build_summary(runs_by_model: dict[str, list[dict]], model_keys: list[str]) -
     return {
         "models": summary,
         "depths": depths,
+        "primary_seq_len": primary_seq_len,
+        "niah_seq_len": niah_seq_len,
         "scaling_lengths": scaling_lengths,
     }
 
@@ -418,6 +438,13 @@ def write_summary_markdown(
         "| Model | Final train loss | Router mean | Selected ratio | Score gap | Eval throughput (tok/s) | Eval latency (ms/step) | Mean NIAH accuracy |",
         "| --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
+    metadata_lines: list[str] = []
+    if summary.get("primary_seq_len") is not None:
+        metadata_lines.append(f"- Primary throughput seq_len: `{summary['primary_seq_len']}`")
+    if summary.get("niah_seq_len") is not None:
+        metadata_lines.append(f"- NIAH seq_len: `{summary['niah_seq_len']}`")
+    if metadata_lines:
+        lines[4:4] = metadata_lines + [""]
     for key in model_keys:
         model = summary["models"][key]
         lines.append(
@@ -649,6 +676,7 @@ def main() -> None:
     warmup_steps = args.warmup_steps if args.warmup_steps is not None else int(preset["warmup_steps"])
     benchmark_steps = args.benchmark_steps if args.benchmark_steps is not None else int(preset["benchmark_steps"])
     eval_task = args.eval_task if args.eval_task is not None else str(preset["eval_task"])
+    niah_seq_len = args.niah_seq_len if args.niah_seq_len is not None else preset.get("niah_seq_len")
 
     outdir = Path(args.outdir) if args.outdir else ROOT / "paper_runs" / args.preset
     runs_dir = outdir / "runs"
@@ -668,6 +696,7 @@ def main() -> None:
         "warmup_steps": warmup_steps,
         "benchmark_steps": benchmark_steps,
         "eval_task": eval_task,
+        "niah_seq_len": niah_seq_len,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "python": sys.executable,
     }
@@ -729,6 +758,8 @@ def main() -> None:
                         "--benchmark-steps",
                         str(benchmark_steps),
                     ]
+                    if niah_seq_len is not None:
+                        eval_cmd.extend(["--niah-seq-len", str(niah_seq_len)])
                     run_command(eval_cmd)
 
     if args.skip_report:
