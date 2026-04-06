@@ -38,6 +38,7 @@ def pick_best_amht(summary: dict) -> str | None:
     candidates = [
         key
         for key in (
+            "amht_v4_stage2_round5",
             "amht_v4_stage2_round4",
             "amht_v4_stage2_round3",
             "amht_v4_stage2_round2",
