@@ -39,6 +39,7 @@ def pick_best_amht(summary: dict) -> str | None:
     preferred_order = [
         key
         for key in (
+            "amht_v4_stage2_round8",
             "amht_v4_stage2_round7_retry",
             "amht_v4_stage2_round7",
             "amht_v4_stage2_round7_state_tracking_diag",
