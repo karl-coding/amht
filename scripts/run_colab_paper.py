@@ -34,6 +34,13 @@ class ModelSpec:
 
 
 MODEL_SPECS = {
+    "amht_v4_stage2_round7_retry": ModelSpec(
+        key="amht_v4_stage2_round7_retry",
+        label="AMHT-V4-Stage2-R7-Retry",
+        config="train/config_amht_v4_stage2_round7_retry.yaml",
+        color="#f97316",
+        marker="<",
+    ),
     "amht_v4_stage2_round7": ModelSpec(
         key="amht_v4_stage2_round7",
         label="AMHT-V4-Stage2-R7",
@@ -160,6 +167,13 @@ MODEL_SPECS = {
         color="#f67280",
         marker="s",
     ),
+    "transformer_v4_stage2_round7_retry_baseline": ModelSpec(
+        key="transformer_v4_stage2_round7_retry_baseline",
+        label="Transformer",
+        config="train/config_transformer_v4_stage2_round7_retry_baseline.yaml",
+        color="#f67280",
+        marker="s",
+    ),
     "transformer_v4_stage2_round7_state_tracking_diag_baseline": ModelSpec(
         key="transformer_v4_stage2_round7_state_tracking_diag_baseline",
         label="Transformer-State-Diag",
@@ -195,6 +209,13 @@ MODEL_SPECS = {
         color="#2a9d8f",
         marker="D",
     ),
+    "mamba3_hybrid_v4_stage2_round7_retry_baseline": ModelSpec(
+        key="mamba3_hybrid_v4_stage2_round7_retry_baseline",
+        label="Mamba-3-Inspired Hybrid",
+        config="train/config_mamba3_hybrid_v4_stage2_round7_retry_baseline.yaml",
+        color="#2a9d8f",
+        marker="D",
+    ),
     "mamba3_hybrid_v4_stage2_round7_state_tracking_diag_baseline": ModelSpec(
         key="mamba3_hybrid_v4_stage2_round7_state_tracking_diag_baseline",
         label="Mamba-3-Inspired Hybrid-State-Diag",
@@ -206,6 +227,20 @@ MODEL_SPECS = {
 
 
 PRESETS = {
+    "stage2_round7_retry": {
+        "models": [
+            "amht_v4_stage2_round7_retry",
+            "transformer_v4_stage2_round7_retry_baseline",
+            "mamba3_hybrid_v4_stage2_round7_retry_baseline",
+        ],
+        "seeds": [42],
+        "seq_len": 16384,
+        "steps_scale": 2.0,
+        "warmup_steps": 1,
+        "benchmark_steps": 2,
+        "eval_task": "all",
+        "niah_seq_len": 16384,
+    },
     "stage2_round7_state_tracking_diag": {
         "models": [
             "amht_v4_stage2_round7_state_tracking_diag",

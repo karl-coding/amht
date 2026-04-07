@@ -35,10 +35,13 @@ def fmt(value: float | None, digits: int = 4) -> str:
 
 
 def pick_best_amht(summary: dict) -> str | None:
-    candidates = [
+    models = summary.get("models", {})
+    preferred_order = [
         key
         for key in (
+            "amht_v4_stage2_round7_retry",
             "amht_v4_stage2_round7",
+            "amht_v4_stage2_round7_state_tracking_diag",
             "amht_v4_stage2_round6",
             "amht_v4_stage2_round5",
             "amht_v4_stage2_round4",
@@ -52,8 +55,20 @@ def pick_best_amht(summary: dict) -> str | None:
             "amht_v4_fast",
             "amht_v4_accurate",
         )
-        if key in summary.get("models", {})
+        if key in models
     ]
+    dynamic_keys = sorted(
+        key
+        for key in models
+        if key.startswith("amht_v4_stage2_") or key.startswith("amht_v4_stage1_")
+    )
+    candidates = []
+    seen: set[str] = set()
+    for key in [*preferred_order, *dynamic_keys]:
+        if key in seen:
+            continue
+        seen.add(key)
+        candidates.append(key)
     candidates = [
         key
         for key in candidates
@@ -86,13 +101,16 @@ def build_note(summary: dict) -> str:
     models = summary.get("models", {})
     best_amht = pick_best_amht(summary)
     quality_tie_tolerance = 0.02
+    diagnostic_mode = best_amht is not None and "state_tracking_diag" in best_amht
 
-    if best_amht and "stage2" in best_amht:
-        stage_label = "2"
+    if diagnostic_mode:
+        stage_label = "2 Diagnostic"
         transformer = next(
             (
                 key
                 for key in (
+                    "transformer_v4_stage2_round7_state_tracking_diag_baseline",
+                    "transformer_v4_stage2_round7_retry_baseline",
                     "transformer_v4_stage2_round7_baseline",
                     "transformer_v4_stage2_round4_baseline",
                     "transformer_v4_stage2_baseline",
@@ -105,6 +123,38 @@ def build_note(summary: dict) -> str:
             (
                 key
                 for key in (
+                    "mamba3_hybrid_v4_stage2_round7_state_tracking_diag_baseline",
+                    "mamba3_hybrid_v4_stage2_round7_retry_baseline",
+                    "mamba3_hybrid_v4_stage2_round7_baseline",
+                    "mamba3_hybrid_v4_stage2_round4_baseline",
+                    "mamba3_hybrid_v4_stage2_baseline",
+                )
+                if key in models
+            ),
+            None,
+        )
+        intro = "Focus on recurrent-state diagnosis first. Mixed retrieval training should only be retried after the pure state-tracking path is numerically stable."
+        favorable_line = "- This diagnostic is favorable: AMHT is stable and already shows a clear state-tracking edge before mixed training is reintroduced."
+    elif best_amht and "stage2" in best_amht:
+        stage_label = "2"
+        transformer = next(
+            (
+                key
+                for key in (
+                    "transformer_v4_stage2_round7_retry_baseline",
+                    "transformer_v4_stage2_round7_baseline",
+                    "transformer_v4_stage2_round4_baseline",
+                    "transformer_v4_stage2_baseline",
+                )
+                if key in models
+            ),
+            None,
+        )
+        mamba_ref = next(
+            (
+                key
+                for key in (
+                    "mamba3_hybrid_v4_stage2_round7_retry_baseline",
                     "mamba3_hybrid_v4_stage2_round7_baseline",
                     "mamba3_hybrid_v4_stage2_round4_baseline",
                     "mamba3_hybrid_v4_stage2_baseline",
@@ -189,7 +239,27 @@ def build_note(summary: dict) -> str:
             "",
         ]
 
-        if (
+        if diagnostic_mode:
+            if state_gap is not None and state_gap >= 0.03:
+                block.extend(
+                    [
+                        "Recommendation:",
+                        "- Pure state-tracking is now numerically stable and already shows the intended separation.",
+                        "- Retry mixed `stage2_round7` next and use retrieval as the holdout guardrail.",
+                        "",
+                    ]
+                )
+            else:
+                block.extend(
+                    [
+                        "Recommendation:",
+                        "- The pure state-tracking path is stable now, but the benchmark is still near chance and does not separate the models yet.",
+                        "- Retry mixed `stage2_round7` next to see whether retrieval-aligned training improves the recurrent signal.",
+                        "- If mixed training is also stable but state-tracking stays near chance, increase task budget or simplify the benchmark before reopening router or memory tuning.",
+                        "",
+                    ]
+                )
+        elif (
             state_gap is not None
             and state_gap >= 0.03
             and acc_gap is not None
@@ -315,7 +385,17 @@ def build_note(summary: dict) -> str:
         acc_gap is not None and acc_gap >= -quality_tie_tolerance and tps_gap is not None and tps_gap > 0.0
         for acc_gap, tps_gap in comparison_gaps
     )
-    if quality_deficit:
+    if diagnostic_mode:
+        lines.extend(
+            [
+                "1. Retry mixed `stage2_round7` now that pure state-tracking is numerically stable.",
+                "2. If mixed training is stable, compare whether retrieval-aligned training lifts state-tracking above chance.",
+                "3. If all three models remain near chance, increase training budget or simplify the benchmark before reading architecture conclusions from it.",
+                "4. Re-open backbone capacity only after the task is stable and informative.",
+                "",
+            ]
+        )
+    elif quality_deficit:
         lines.extend(
             [
                 *(
