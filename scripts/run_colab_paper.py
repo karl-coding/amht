@@ -34,6 +34,13 @@ class ModelSpec:
 
 
 MODEL_SPECS = {
+    "amht_v4_stage2_round12": ModelSpec(
+        key="amht_v4_stage2_round12",
+        label="AMHT-V4-Stage2-R12",
+        config="train/config_amht_v4_stage2_round12.yaml",
+        color="#4c1d95",
+        marker="P",
+    ),
     "amht_v4_stage2_round11_retry": ModelSpec(
         key="amht_v4_stage2_round11_retry",
         label="AMHT-V4-Stage2-R11-Retry",
@@ -325,6 +332,34 @@ MODEL_SPECS = {
 
 
 PRESETS = {
+    "stage2_round12_validate": {
+        "models": [
+            "amht_v4_stage2_round12",
+            "transformer_v4_stage2_round11_retry_baseline",
+            "mamba3_hybrid_v4_stage2_round11_retry_baseline",
+        ],
+        "seeds": [42, 43, 44],
+        "seq_len": 16384,
+        "steps_scale": 4.0,
+        "warmup_steps": 1,
+        "benchmark_steps": 2,
+        "eval_task": "all",
+        "niah_seq_len": 16384,
+    },
+    "stage2_round12": {
+        "models": [
+            "amht_v4_stage2_round12",
+            "transformer_v4_stage2_round11_retry_baseline",
+            "mamba3_hybrid_v4_stage2_round11_retry_baseline",
+        ],
+        "seeds": [42],
+        "seq_len": 16384,
+        "steps_scale": 4.0,
+        "warmup_steps": 1,
+        "benchmark_steps": 2,
+        "eval_task": "all",
+        "niah_seq_len": 16384,
+    },
     "stage2_round11_retry_validate": {
         "models": [
             "amht_v4_stage2_round11_retry",
