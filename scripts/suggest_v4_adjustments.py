@@ -54,6 +54,18 @@ def pick_best_amht(summary: dict) -> str | None:
         )
         if key in summary.get("models", {})
     ]
+    candidates = [
+        key
+        for key in candidates
+        if any(
+            metric(summary, key, section, field) is not None
+            for section, field in (
+                ("niah", "mean_accuracy"),
+                ("state_tracking", "mean_accuracy"),
+                ("throughput", "tokens_per_second"),
+            )
+        )
+    ]
     if not candidates:
         return None
 
@@ -308,10 +320,10 @@ def build_note(summary: dict) -> str:
             [
                 *(
                     [
-                        "1. Keep the round-four backbone fixed and tune router or memory behavior first.",
-                        "2. Re-run the same harder retrieval comparison.",
-                        "3. Re-open backbone changes only if hybrid tuning fails to recover quality.",
-                        "4. Delay paper-focused freezing until AMHT stays ahead on the harder retrieval setting.",
+                        "1. Run a pure state-tracking diagnostic before any new mixed-task retry.",
+                        "2. Keep the round-four router and memory settings fixed; do not reopen latent or router-neighbor tuning.",
+                        "3. Re-open only backbone capacity after state-tracking is numerically stable.",
+                        "4. Retry mixed retrieval plus state-tracking smoke only after the diagnostic run is clean.",
                     ]
                     if stage_label == "2"
                     else [

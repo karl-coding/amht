@@ -26,7 +26,7 @@ except ImportError as exc:  # pragma: no cover
 import yaml
 
 from data.dataset import MixedDataset, RetrievalDataset, StateTrackingDataset, SyntheticDataset
-from model.amht import AMHTModel, compute_loss
+from model.amht import AMHTModel, LossBreakdown, compute_loss
 from model.mamba3_hybrid import Mamba3HybridModel
 from model.transformer import LocalTransformerModel
 
@@ -178,6 +178,37 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def sample_batch_sources(dataset, start: int, stop: int) -> dict[str, int]:
+    if not hasattr(dataset, "sample_source"):
+        return {}
+    counts: dict[str, int] = {}
+    for index in range(start, stop):
+        source = str(dataset.sample_source(index))
+        counts[source] = counts.get(source, 0) + 1
+    return counts
+
+
+def losses_are_finite(losses: LossBreakdown) -> bool:
+    values = (
+        losses.total,
+        losses.main,
+        losses.router,
+        losses.router_mean,
+        losses.router_selected_ratio,
+        losses.router_selected_score_mean,
+        losses.router_unselected_score_mean,
+        losses.router_score_gap,
+    )
+    return all(bool(torch.isfinite(value).all().item()) for value in values)
+
+
+def parameters_are_finite(model: nn.Module) -> bool:
+    for parameter in model.parameters():
+        if not torch.isfinite(parameter).all():
+            return False
+    return True
+
+
 def train() -> None:
     args = parse_args()
     cfg = load_config(args.config)
@@ -229,6 +260,7 @@ def train() -> None:
     for step in range(start_step + 1, start_step + total_steps + 1):
         start = (step - 1) * int(train_cfg["batch_size"])
         stop = step * int(train_cfg["batch_size"])
+        batch_sources = sample_batch_sources(dataset, start, stop)
         batch = [dataset[index] for index in range(start, stop)]
         tokens = torch.stack(batch, dim=0).to(device)
         losses = compute_loss(
@@ -242,32 +274,66 @@ def train() -> None:
             router_score_margin=float(loss_cfg.get("router_score_margin", 0.02)),
             router_score_weight=float(loss_cfg.get("router_score_weight", 0.0)),
         )
+        elapsed = time.perf_counter() - started
+        local_step = step - start_step
+        seen_tokens = local_step * int(train_cfg["batch_size"]) * args.seq_len
+        throughput = seen_tokens / max(elapsed, 1e-6)
+        metrics = {
+            "step": step,
+            "total_loss": losses.total.item(),
+            "main_loss": losses.main.item(),
+            "router_loss": losses.router.item(),
+            "router_mean": losses.router_mean.item(),
+            "router_selected_ratio": losses.router_selected_ratio.item(),
+            "router_selected_score_mean": losses.router_selected_score_mean.item(),
+            "router_unselected_score_mean": losses.router_unselected_score_mean.item(),
+            "router_score_gap": losses.router_score_gap.item(),
+            "tokens_per_second": throughput,
+            "device": str(device),
+            "seq_len": args.seq_len,
+            "config": args.config,
+            "seed": seed,
+            "status": "ok",
+        }
+        if batch_sources:
+            metrics["batch_sources"] = batch_sources
+            if len(batch_sources) == 1:
+                metrics["batch_source"] = next(iter(batch_sources))
+        if not losses_are_finite(losses):
+            metrics["status"] = "non_finite_loss"
+            with log_path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(metrics) + "\n")
+            batch_source = metrics.get("batch_source", "mixed")
+            raise SystemExit(
+                f"Non-finite training loss at step {step} for {args.config} "
+                f"(seed={seed}, batch_source={batch_source})"
+            )
         optimizer.zero_grad(set_to_none=True)
         losses.total.backward()
-        nn.utils.clip_grad_norm_(model.parameters(), float(train_cfg["grad_clip"]))
+        grad_norm = nn.utils.clip_grad_norm_(model.parameters(), float(train_cfg["grad_clip"]))
+        grad_norm_value = float(grad_norm)
+        metrics["grad_norm"] = grad_norm_value
+        if not torch.isfinite(torch.as_tensor(grad_norm)).all():
+            metrics["status"] = "non_finite_grad_norm"
+            with log_path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(metrics) + "\n")
+            batch_source = metrics.get("batch_source", "mixed")
+            raise SystemExit(
+                f"Non-finite gradient norm at step {step} for {args.config} "
+                f"(seed={seed}, batch_source={batch_source})"
+            )
         optimizer.step()
+        if not parameters_are_finite(model):
+            metrics["status"] = "non_finite_parameters"
+            with log_path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(metrics) + "\n")
+            batch_source = metrics.get("batch_source", "mixed")
+            raise SystemExit(
+                f"Non-finite model parameters at step {step} for {args.config} "
+                f"(seed={seed}, batch_source={batch_source})"
+            )
 
         if step % int(train_cfg["log_every"]) == 0 or step in {1, total_steps}:
-            elapsed = time.perf_counter() - started
-            local_step = step - start_step
-            seen_tokens = local_step * int(train_cfg["batch_size"]) * args.seq_len
-            throughput = seen_tokens / max(elapsed, 1e-6)
-            metrics = {
-                "step": step,
-                "total_loss": losses.total.item(),
-                "main_loss": losses.main.item(),
-                "router_loss": losses.router.item(),
-                "router_mean": losses.router_mean.item(),
-                "router_selected_ratio": losses.router_selected_ratio.item(),
-                "router_selected_score_mean": losses.router_selected_score_mean.item(),
-                "router_unselected_score_mean": losses.router_unselected_score_mean.item(),
-                "router_score_gap": losses.router_score_gap.item(),
-                "tokens_per_second": throughput,
-                "device": str(device),
-                "seq_len": args.seq_len,
-                "config": args.config,
-                "seed": seed,
-            }
             print(
                 f"step={step} total_loss={losses.total.item():.4f} "
                 f"main_loss={losses.main.item():.4f} router_loss={losses.router.item():.4f} "

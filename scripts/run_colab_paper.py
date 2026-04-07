@@ -41,6 +41,13 @@ MODEL_SPECS = {
         color="#fb923c",
         marker="v",
     ),
+    "amht_v4_stage2_round7_state_tracking_diag": ModelSpec(
+        key="amht_v4_stage2_round7_state_tracking_diag",
+        label="AMHT-V4-Stage2-R7-State-Diag",
+        config="train/config_amht_v4_stage2_round7_state_tracking_diag.yaml",
+        color="#fdba74",
+        marker="1",
+    ),
     "amht_v4_stage2_round6": ModelSpec(
         key="amht_v4_stage2_round6",
         label="AMHT-V4-Stage2-R6",
@@ -153,6 +160,13 @@ MODEL_SPECS = {
         color="#f67280",
         marker="s",
     ),
+    "transformer_v4_stage2_round7_state_tracking_diag_baseline": ModelSpec(
+        key="transformer_v4_stage2_round7_state_tracking_diag_baseline",
+        label="Transformer-State-Diag",
+        config="train/config_transformer_v4_stage2_round7_state_tracking_diag_baseline.yaml",
+        color="#f8a5af",
+        marker="s",
+    ),
     "mamba3_hybrid_baseline": ModelSpec(
         key="mamba3_hybrid_baseline",
         label="Mamba-3-Inspired Hybrid",
@@ -181,10 +195,31 @@ MODEL_SPECS = {
         color="#2a9d8f",
         marker="D",
     ),
+    "mamba3_hybrid_v4_stage2_round7_state_tracking_diag_baseline": ModelSpec(
+        key="mamba3_hybrid_v4_stage2_round7_state_tracking_diag_baseline",
+        label="Mamba-3-Inspired Hybrid-State-Diag",
+        config="train/config_mamba3_hybrid_v4_stage2_round7_state_tracking_diag_baseline.yaml",
+        color="#7ad1c7",
+        marker="D",
+    ),
 }
 
 
 PRESETS = {
+    "stage2_round7_state_tracking_diag": {
+        "models": [
+            "amht_v4_stage2_round7_state_tracking_diag",
+            "transformer_v4_stage2_round7_state_tracking_diag_baseline",
+            "mamba3_hybrid_v4_stage2_round7_state_tracking_diag_baseline",
+        ],
+        "seeds": [42],
+        "seq_len": 16384,
+        "steps_scale": 2.0,
+        "warmup_steps": 1,
+        "benchmark_steps": 2,
+        "eval_task": "state_tracking",
+        "niah_seq_len": 16384,
+    },
     "stage2_round7_validate": {
         "models": [
             "amht_v4_stage2_round7",
@@ -471,13 +506,41 @@ def load_train_log(path: Path) -> list[dict]:
     return records
 
 
+def is_finite_number(value: object) -> bool:
+    return isinstance(value, (int, float)) and math.isfinite(float(value))
+
+
+def train_run_is_valid(train_final: dict) -> bool:
+    if not train_final:
+        return True
+    status = str(train_final.get("status", "ok"))
+    if status != "ok":
+        return False
+    monitored_fields = (
+        "total_loss",
+        "main_loss",
+        "router_loss",
+        "router_mean",
+        "router_selected_ratio",
+        "router_selected_score_mean",
+        "router_unselected_score_mean",
+        "router_score_gap",
+        "tokens_per_second",
+    )
+    return all(
+        field not in train_final or is_finite_number(train_final.get(field))
+        for field in monitored_fields
+    )
+
+
 def mean_std(values: list[float]) -> tuple[float | None, float | None]:
-    if not values:
+    filtered = [float(value) for value in values if is_finite_number(value)]
+    if not filtered:
         return None, None
-    mean = sum(values) / len(values)
-    if len(values) == 1:
+    mean = sum(filtered) / len(filtered)
+    if len(filtered) == 1:
         return mean, 0.0
-    variance = sum((value - mean) ** 2 for value in values) / (len(values) - 1)
+    variance = sum((value - mean) ** 2 for value in filtered) / (len(filtered) - 1)
     return mean, math.sqrt(variance)
 
 
@@ -540,7 +603,7 @@ def niah_run_counts(run: dict) -> tuple[int | None, int | None]:
     cases_per_depth = batch_size * repeats
     total_hits = 0
     for score in accuracy_by_depth:
-        if not isinstance(score, (int, float)):
+        if not is_finite_number(score):
             return None, None
         total_hits += int(round(float(score) * cases_per_depth))
     total_cases = cases_per_depth * len(accuracy_by_depth)
@@ -1192,6 +1255,9 @@ def main() -> None:
                 train_log = load_train_log(train_log_path)
                 if train_log:
                     train_final = train_log[-1]
+                    if not train_run_is_valid(train_final):
+                        warn(f"skipping_failed_train_run={run_dir}")
+                        continue
                 elif not args.skip_train:
                     raise SystemExit(f"Empty train log: {train_log_path}")
                 else:
