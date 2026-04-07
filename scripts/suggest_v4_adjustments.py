@@ -105,6 +105,7 @@ def build_note(summary: dict) -> str:
     best_amht = pick_best_amht(summary)
     quality_tie_tolerance = 0.02
     diagnostic_mode = best_amht is not None and "state_tracking_diag" in best_amht
+    post_budget_mode = best_amht is not None and "stage2_round10" in best_amht
     stable_mixed_mode = best_amht is not None and any(
         tag in best_amht
         for tag in (
@@ -253,7 +254,16 @@ def build_note(summary: dict) -> str:
             "",
         ]
 
-        if diagnostic_mode:
+        if post_budget_mode:
+            block.extend(
+                [
+                    "Recommendation:",
+                    "- This longer-budget run is the clear readout: retrieval improved, but the state-tracking benchmark still leaves all models clustered near chance.",
+                    "- Keep the stable retry architecture fixed and redesign or simplify the benchmark before reopening backbone, router, or memory tuning.",
+                    "",
+                ]
+            )
+        elif diagnostic_mode:
             if state_gap is not None and state_gap >= 0.03:
                 block.extend(
                     [
@@ -411,6 +421,16 @@ def build_note(summary: dict) -> str:
                 "2. If mixed training is stable, compare whether retrieval-aligned training lifts state-tracking above chance.",
                 "3. If all three models remain near chance, increase training budget or simplify the benchmark before reading architecture conclusions from it.",
                 "4. Re-open backbone capacity only after the task is stable and informative.",
+                "",
+            ]
+        )
+    elif post_budget_mode:
+        lines.extend(
+            [
+                "1. Keep the stable retry architecture fixed as the last reliable mixed-training setup.",
+                "2. Stop opening new backbone, router, or memory axes on the current `modsum` benchmark.",
+                "3. Redesign or simplify the state-tracking benchmark so it separates the models above chance at the same budget.",
+                "4. Resume architecture tuning only after the benchmark is informative.",
                 "",
             ]
         )

@@ -44,19 +44,19 @@ class SuggestV4AdjustmentsTests(unittest.TestCase):
     def test_stable_mixed_stage2_quality_deficit_points_to_backbone_only_followup(self) -> None:
         summary = {
             "models": {
-                "amht_v4_stage2_round10": {
-                    "label": "AMHT-V4-Stage2-R10",
+                "amht_v4_stage2_round8": {
+                    "label": "AMHT-V4-Stage2-R8",
                     "niah": {"mean_accuracy": {"mean": 0.4732, "std": 0.0}},
                     "state_tracking": {"mean_accuracy": {"mean": 0.075, "std": 0.0}},
                     "throughput": {"tokens_per_second": {"mean": 251377.94, "std": 0.0}},
                 },
-                "transformer_v4_stage2_round10_baseline": {
+                "transformer_v4_stage2_round7_retry_baseline": {
                     "label": "Transformer",
                     "niah": {"mean_accuracy": {"mean": 0.5446, "std": 0.0}},
                     "state_tracking": {"mean_accuracy": {"mean": 0.05, "std": 0.0}},
                     "throughput": {"tokens_per_second": {"mean": 334267.74, "std": 0.0}},
                 },
-                "mamba3_hybrid_v4_stage2_round10_baseline": {
+                "mamba3_hybrid_v4_stage2_round7_retry_baseline": {
                     "label": "Mamba",
                     "niah": {"mean_accuracy": {"mean": 0.5, "std": 0.0}},
                     "state_tracking": {"mean_accuracy": {"mean": 0.075, "std": 0.0}},
@@ -71,6 +71,36 @@ class SuggestV4AdjustmentsTests(unittest.TestCase):
         self.assertIn("Freeze the stable retry architecture and increase training budget next instead of opening another backbone axis.", note)
         self.assertIn("Increase training budget only with the same architecture before opening new axes.", note)
         self.assertNotIn("Run a pure state-tracking diagnostic before any new mixed-task retry.", note)
+
+    def test_post_budget_stage2_points_to_benchmark_redesign(self) -> None:
+        summary = {
+            "models": {
+                "amht_v4_stage2_round10": {
+                    "label": "AMHT-V4-Stage2-R10",
+                    "niah": {"mean_accuracy": {"mean": 0.7321, "std": 0.0}},
+                    "state_tracking": {"mean_accuracy": {"mean": 0.0625, "std": 0.0}},
+                    "throughput": {"tokens_per_second": {"mean": 302254.56, "std": 0.0}},
+                },
+                "transformer_v4_stage2_round10_baseline": {
+                    "label": "Transformer",
+                    "niah": {"mean_accuracy": {"mean": 0.7946, "std": 0.0}},
+                    "state_tracking": {"mean_accuracy": {"mean": 0.05, "std": 0.0}},
+                    "throughput": {"tokens_per_second": {"mean": 334244.38, "std": 0.0}},
+                },
+                "mamba3_hybrid_v4_stage2_round10_baseline": {
+                    "label": "Mamba",
+                    "niah": {"mean_accuracy": {"mean": 0.7411, "std": 0.0}},
+                    "state_tracking": {"mean_accuracy": {"mean": 0.0375, "std": 0.0}},
+                    "throughput": {"tokens_per_second": {"mean": 241537.31, "std": 0.0}},
+                },
+            }
+        }
+
+        note = MODULE.build_note(summary)
+
+        self.assertIn("This longer-budget run is the clear readout: retrieval improved, but the state-tracking benchmark still leaves all models clustered near chance.", note)
+        self.assertIn("Redesign or simplify the state-tracking benchmark so it separates the models above chance at the same budget.", note)
+        self.assertNotIn("Re-open only backbone capacity next", note)
 
 
 if __name__ == "__main__":
