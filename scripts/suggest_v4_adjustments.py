@@ -39,6 +39,8 @@ def pick_best_amht(summary: dict) -> str | None:
     preferred_order = [
         key
         for key in (
+            "amht_v4_stage2_round11_retry",
+            "amht_v4_stage2_round11_state_tracking_diag",
             "amht_v4_stage2_round11",
             "amht_v4_stage2_round10",
             "amht_v4_stage2_round9",
@@ -110,6 +112,7 @@ def build_note(summary: dict) -> str:
     stable_mixed_mode = best_amht is not None and any(
         tag in best_amht
         for tag in (
+            "stage2_round11_retry",
             "stage2_round11",
             "stage2_round10",
             "stage2_round7_retry",
@@ -156,6 +159,8 @@ def build_note(summary: dict) -> str:
             (
                 key
                 for key in (
+                    "transformer_v4_stage2_round11_state_tracking_diag_baseline",
+                    "transformer_v4_stage2_round11_retry_baseline",
                     "transformer_v4_stage2_round11_baseline",
                     "transformer_v4_stage2_round10_baseline",
                     "transformer_v4_stage2_round7_retry_baseline",
@@ -171,6 +176,8 @@ def build_note(summary: dict) -> str:
             (
                 key
                 for key in (
+                    "mamba3_hybrid_v4_stage2_round11_state_tracking_diag_baseline",
+                    "mamba3_hybrid_v4_stage2_round11_retry_baseline",
                     "mamba3_hybrid_v4_stage2_round11_baseline",
                     "mamba3_hybrid_v4_stage2_round10_baseline",
                     "mamba3_hybrid_v4_stage2_round7_retry_baseline",

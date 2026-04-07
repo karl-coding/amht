@@ -34,6 +34,20 @@ class ModelSpec:
 
 
 MODEL_SPECS = {
+    "amht_v4_stage2_round11_retry": ModelSpec(
+        key="amht_v4_stage2_round11_retry",
+        label="AMHT-V4-Stage2-R11-Retry",
+        config="train/config_amht_v4_stage2_round11_retry.yaml",
+        color="#8b5cf6",
+        marker="x",
+    ),
+    "amht_v4_stage2_round11_state_tracking_diag": ModelSpec(
+        key="amht_v4_stage2_round11_state_tracking_diag",
+        label="AMHT-V4-Stage2-R11-State-Diag",
+        config="train/config_amht_v4_stage2_round11_state_tracking_diag.yaml",
+        color="#a78bfa",
+        marker="1",
+    ),
     "amht_v4_stage2_round11": ModelSpec(
         key="amht_v4_stage2_round11",
         label="AMHT-V4-Stage2-R11",
@@ -216,6 +230,20 @@ MODEL_SPECS = {
         color="#f67280",
         marker="s",
     ),
+    "transformer_v4_stage2_round11_retry_baseline": ModelSpec(
+        key="transformer_v4_stage2_round11_retry_baseline",
+        label="Transformer",
+        config="train/config_transformer_v4_stage2_round11_retry_baseline.yaml",
+        color="#f472b6",
+        marker="s",
+    ),
+    "transformer_v4_stage2_round11_state_tracking_diag_baseline": ModelSpec(
+        key="transformer_v4_stage2_round11_state_tracking_diag_baseline",
+        label="Transformer-State-Diag",
+        config="train/config_transformer_v4_stage2_round11_state_tracking_diag_baseline.yaml",
+        color="#f9a8d4",
+        marker="s",
+    ),
     "transformer_v4_stage2_round7_state_tracking_diag_baseline": ModelSpec(
         key="transformer_v4_stage2_round7_state_tracking_diag_baseline",
         label="Transformer-State-Diag",
@@ -272,6 +300,20 @@ MODEL_SPECS = {
         color="#2a9d8f",
         marker="D",
     ),
+    "mamba3_hybrid_v4_stage2_round11_retry_baseline": ModelSpec(
+        key="mamba3_hybrid_v4_stage2_round11_retry_baseline",
+        label="Mamba-3-Inspired Hybrid",
+        config="train/config_mamba3_hybrid_v4_stage2_round11_retry_baseline.yaml",
+        color="#14b8a6",
+        marker="D",
+    ),
+    "mamba3_hybrid_v4_stage2_round11_state_tracking_diag_baseline": ModelSpec(
+        key="mamba3_hybrid_v4_stage2_round11_state_tracking_diag_baseline",
+        label="Mamba-3-Inspired Hybrid-State-Diag",
+        config="train/config_mamba3_hybrid_v4_stage2_round11_state_tracking_diag_baseline.yaml",
+        color="#5eead4",
+        marker="D",
+    ),
     "mamba3_hybrid_v4_stage2_round7_state_tracking_diag_baseline": ModelSpec(
         key="mamba3_hybrid_v4_stage2_round7_state_tracking_diag_baseline",
         label="Mamba-3-Inspired Hybrid-State-Diag",
@@ -283,6 +325,48 @@ MODEL_SPECS = {
 
 
 PRESETS = {
+    "stage2_round11_retry_validate": {
+        "models": [
+            "amht_v4_stage2_round11_retry",
+            "transformer_v4_stage2_round11_retry_baseline",
+            "mamba3_hybrid_v4_stage2_round11_retry_baseline",
+        ],
+        "seeds": [42, 43, 44],
+        "seq_len": 16384,
+        "steps_scale": 4.0,
+        "warmup_steps": 1,
+        "benchmark_steps": 2,
+        "eval_task": "all",
+        "niah_seq_len": 16384,
+    },
+    "stage2_round11_retry": {
+        "models": [
+            "amht_v4_stage2_round11_retry",
+            "transformer_v4_stage2_round11_retry_baseline",
+            "mamba3_hybrid_v4_stage2_round11_retry_baseline",
+        ],
+        "seeds": [42],
+        "seq_len": 16384,
+        "steps_scale": 4.0,
+        "warmup_steps": 1,
+        "benchmark_steps": 2,
+        "eval_task": "all",
+        "niah_seq_len": 16384,
+    },
+    "stage2_round11_state_tracking_diag": {
+        "models": [
+            "amht_v4_stage2_round11_state_tracking_diag",
+            "transformer_v4_stage2_round11_state_tracking_diag_baseline",
+            "mamba3_hybrid_v4_stage2_round11_state_tracking_diag_baseline",
+        ],
+        "seeds": [42],
+        "seq_len": 16384,
+        "steps_scale": 4.0,
+        "warmup_steps": 1,
+        "benchmark_steps": 2,
+        "eval_task": "state_tracking",
+        "niah_seq_len": 16384,
+    },
     "stage2_round11_validate": {
         "models": [
             "amht_v4_stage2_round11",
