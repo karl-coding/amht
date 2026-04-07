@@ -169,6 +169,16 @@ def dataset_type_name(cfg: dict) -> str:
     return str(cfg.get("data", {}).get("dataset_type", "synthetic")).lower()
 
 
+def batch_source_name(dataset_type: str, batch_sources: dict[str, int]) -> str:
+    if len(batch_sources) == 1:
+        return next(iter(batch_sources))
+    return dataset_type
+
+
+def disable_router_aux_for_batch(dataset_type: str, batch_sources: dict[str, int]) -> bool:
+    return batch_source_name(dataset_type, batch_sources) == "state_tracking"
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train an AMHT model")
     parser.add_argument("--config", default="train/config.yaml", help="Path to YAML config")
@@ -266,18 +276,26 @@ def train() -> None:
         start = (step - 1) * int(train_cfg["batch_size"])
         stop = step * int(train_cfg["batch_size"])
         batch_sources = sample_batch_sources(dataset, start, stop)
+        batch_source = batch_source_name(dataset_type, batch_sources)
         batch = [dataset[index] for index in range(start, stop)]
         tokens = torch.stack(batch, dim=0).to(device)
+        router_weight = float(loss_cfg["router_weight"])
+        router_mean_weight = float(loss_cfg.get("router_mean_weight", 1.0))
+        router_score_weight = float(loss_cfg.get("router_score_weight", 0.0))
+        if disable_router_aux_for_batch(dataset_type, batch_sources):
+            router_weight = 0.0
+            router_mean_weight = 0.0
+            router_score_weight = 0.0
         losses = compute_loss(
             model=model,
             tokens=tokens,
             main_weight=float(loss_cfg["main_weight"]),
-            router_weight=float(loss_cfg["router_weight"]),
+            router_weight=router_weight,
             loss_mode=loss_mode,
             router_mean_target=float(loss_cfg.get("router_mean_target", cfg["model"].get("router_ratio", 0.1))),
-            router_mean_weight=float(loss_cfg.get("router_mean_weight", 1.0)),
+            router_mean_weight=router_mean_weight,
             router_score_margin=float(loss_cfg.get("router_score_margin", 0.02)),
-            router_score_weight=float(loss_cfg.get("router_score_weight", 0.0)),
+            router_score_weight=router_score_weight,
         )
         elapsed = time.perf_counter() - started
         local_step = step - start_step
@@ -299,17 +317,19 @@ def train() -> None:
             "config": args.config,
             "seed": seed,
             "dataset_type": dataset_type,
+            "effective_router_weight": router_weight,
+            "effective_router_mean_weight": router_mean_weight,
+            "effective_router_score_weight": router_score_weight,
             "status": "ok",
         }
         if batch_sources:
             metrics["batch_sources"] = batch_sources
             if len(batch_sources) == 1:
-                metrics["batch_source"] = next(iter(batch_sources))
+                metrics["batch_source"] = batch_source
         if not losses_are_finite(losses):
             metrics["status"] = "non_finite_loss"
             with log_path.open("a", encoding="utf-8") as handle:
                 handle.write(json.dumps(metrics) + "\n")
-            batch_source = metrics.get("batch_source", dataset_type)
             raise SystemExit(
                 f"Non-finite training loss at step {step} for {args.config} "
                 f"(seed={seed}, batch_source={batch_source})"
@@ -323,7 +343,6 @@ def train() -> None:
             metrics["status"] = "non_finite_grad_norm"
             with log_path.open("a", encoding="utf-8") as handle:
                 handle.write(json.dumps(metrics) + "\n")
-            batch_source = metrics.get("batch_source", dataset_type)
             raise SystemExit(
                 f"Non-finite gradient norm at step {step} for {args.config} "
                 f"(seed={seed}, batch_source={batch_source})"
@@ -333,7 +352,6 @@ def train() -> None:
             metrics["status"] = "non_finite_parameters"
             with log_path.open("a", encoding="utf-8") as handle:
                 handle.write(json.dumps(metrics) + "\n")
-            batch_source = metrics.get("batch_source", dataset_type)
             raise SystemExit(
                 f"Non-finite model parameters at step {step} for {args.config} "
                 f"(seed={seed}, batch_source={batch_source})"
