@@ -41,6 +41,36 @@ class SuggestV4AdjustmentsTests(unittest.TestCase):
         self.assertNotIn("No AMHT model found in summary.", note)
         self.assertIn("Retry mixed `stage2_round7` now that pure state-tracking is numerically stable.", note)
 
+    def test_stable_mixed_stage2_quality_deficit_points_to_backbone_only_followup(self) -> None:
+        summary = {
+            "models": {
+                "amht_v4_stage2_round8": {
+                    "label": "AMHT-V4-Stage2-R8",
+                    "niah": {"mean_accuracy": {"mean": 0.4732, "std": 0.0}},
+                    "state_tracking": {"mean_accuracy": {"mean": 0.075, "std": 0.0}},
+                    "throughput": {"tokens_per_second": {"mean": 251377.94, "std": 0.0}},
+                },
+                "transformer_v4_stage2_round7_retry_baseline": {
+                    "label": "Transformer",
+                    "niah": {"mean_accuracy": {"mean": 0.5446, "std": 0.0}},
+                    "state_tracking": {"mean_accuracy": {"mean": 0.05, "std": 0.0}},
+                    "throughput": {"tokens_per_second": {"mean": 334267.74, "std": 0.0}},
+                },
+                "mamba3_hybrid_v4_stage2_round7_retry_baseline": {
+                    "label": "Mamba",
+                    "niah": {"mean_accuracy": {"mean": 0.5, "std": 0.0}},
+                    "state_tracking": {"mean_accuracy": {"mean": 0.075, "std": 0.0}},
+                    "throughput": {"tokens_per_second": {"mean": 241548.13, "std": 0.0}},
+                },
+            }
+        }
+
+        note = MODULE.build_note(summary)
+
+        self.assertIn("# Stage 2 Adjustment Note", note)
+        self.assertIn("Keep the stable retry mix and frozen router or memory settings.", note)
+        self.assertNotIn("Run a pure state-tracking diagnostic before any new mixed-task retry.", note)
+
 
 if __name__ == "__main__":
     unittest.main()

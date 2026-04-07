@@ -39,6 +39,7 @@ def pick_best_amht(summary: dict) -> str | None:
     preferred_order = [
         key
         for key in (
+            "amht_v4_stage2_round9",
             "amht_v4_stage2_round8",
             "amht_v4_stage2_round7_retry",
             "amht_v4_stage2_round7",
@@ -103,6 +104,14 @@ def build_note(summary: dict) -> str:
     best_amht = pick_best_amht(summary)
     quality_tie_tolerance = 0.02
     diagnostic_mode = best_amht is not None and "state_tracking_diag" in best_amht
+    stable_mixed_mode = best_amht is not None and any(
+        tag in best_amht
+        for tag in (
+            "stage2_round7_retry",
+            "stage2_round8",
+            "stage2_round9",
+        )
+    )
 
     if diagnostic_mode:
         stage_label = "2 Diagnostic"
@@ -401,6 +410,13 @@ def build_note(summary: dict) -> str:
             [
                 *(
                     [
+                        "1. Keep the stable retry mix and frozen router or memory settings.",
+                        "2. Change only one backbone axis at a time; revert the previous losing backbone change before the next run.",
+                        "3. Use state-tracking as the tie-breaker, but reject any run that gives back the retrieval or throughput tradeoff too aggressively.",
+                        "4. If the next backbone run still fails, treat the current mod-sum benchmark as underpowered and redesign or extend it before drawing architecture conclusions.",
+                    ]
+                    if stage_label == "2" and stable_mixed_mode
+                    else [
                         "1. Run a pure state-tracking diagnostic before any new mixed-task retry.",
                         "2. Keep the round-four router and memory settings fixed; do not reopen latent or router-neighbor tuning.",
                         "3. Re-open only backbone capacity after state-tracking is numerically stable.",
