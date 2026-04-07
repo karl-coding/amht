@@ -7,9 +7,9 @@ model:
   hidden_dim: 768
   layers: 4
   heads: 4
-  latent_tokens: 0
-  memory_per_layer_io: false
-  router_ratio: 0.0
+  latent_tokens: 32
+  attention_window: 3276
+  router_ratio: 0.1
   ssm_state_size: 128
   max_seq_len: 32768
 

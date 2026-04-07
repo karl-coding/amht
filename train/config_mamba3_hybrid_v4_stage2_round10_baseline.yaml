@@ -7,19 +7,20 @@ model:
   hidden_dim: 768
   layers: 4
   heads: 4
-  latent_tokens: 0
-  memory_per_layer_io: false
-  router_ratio: 0.0
+  attention_every: 2
+  attention_window: 3276
+  router_ratio: 0.1
   ssm_state_size: 64
-  ssm_complex: true
+  ssm_groups: 4
   ssm_conv_kernel: 5
+  ssm_complex: true
   max_seq_len: 32768
 
 training:
   batch_size: 1
   micro_batch_size: 1
   steps: 200
-  lr: 0.0003
+  lr: 0.00025
   weight_decay: 0.01
   grad_clip: 1.0
   log_every: 10
