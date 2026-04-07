@@ -39,6 +39,7 @@ def pick_best_amht(summary: dict) -> str | None:
     preferred_order = [
         key
         for key in (
+            "amht_v4_stage2_round13",
             "amht_v4_stage2_round12_retry",
             "amht_v4_stage2_round12",
             "amht_v4_stage2_round11_retry",
@@ -114,6 +115,7 @@ def build_note(summary: dict) -> str:
     stable_mixed_mode = best_amht is not None and any(
         tag in best_amht
         for tag in (
+            "stage2_round13",
             "stage2_round12_retry",
             "stage2_round12",
             "stage2_round11_retry",

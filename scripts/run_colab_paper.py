@@ -34,6 +34,13 @@ class ModelSpec:
 
 
 MODEL_SPECS = {
+    "amht_v4_stage2_round13": ModelSpec(
+        key="amht_v4_stage2_round13",
+        label="AMHT-V4-Stage2-R13",
+        config="train/config_amht_v4_stage2_round13.yaml",
+        color="#312e81",
+        marker="D",
+    ),
     "amht_v4_stage2_round12_retry": ModelSpec(
         key="amht_v4_stage2_round12_retry",
         label="AMHT-V4-Stage2-R12-Retry",
@@ -251,6 +258,13 @@ MODEL_SPECS = {
         color="#f472b6",
         marker="s",
     ),
+    "transformer_v4_stage2_round13_baseline": ModelSpec(
+        key="transformer_v4_stage2_round13_baseline",
+        label="Transformer",
+        config="train/config_transformer_v4_stage2_round13_baseline.yaml",
+        color="#f472b6",
+        marker="s",
+    ),
     "transformer_v4_stage2_round11_state_tracking_diag_baseline": ModelSpec(
         key="transformer_v4_stage2_round11_state_tracking_diag_baseline",
         label="Transformer-State-Diag",
@@ -321,6 +335,13 @@ MODEL_SPECS = {
         color="#14b8a6",
         marker="D",
     ),
+    "mamba3_hybrid_v4_stage2_round13_baseline": ModelSpec(
+        key="mamba3_hybrid_v4_stage2_round13_baseline",
+        label="Mamba-3-Inspired Hybrid",
+        config="train/config_mamba3_hybrid_v4_stage2_round13_baseline.yaml",
+        color="#14b8a6",
+        marker="D",
+    ),
     "mamba3_hybrid_v4_stage2_round11_state_tracking_diag_baseline": ModelSpec(
         key="mamba3_hybrid_v4_stage2_round11_state_tracking_diag_baseline",
         label="Mamba-3-Inspired Hybrid-State-Diag",
@@ -339,6 +360,34 @@ MODEL_SPECS = {
 
 
 PRESETS = {
+    "stage2_round13_validate": {
+        "models": [
+            "amht_v4_stage2_round13",
+            "transformer_v4_stage2_round13_baseline",
+            "mamba3_hybrid_v4_stage2_round13_baseline",
+        ],
+        "seeds": [42, 43, 44],
+        "seq_len": 16384,
+        "steps_scale": 8.0,
+        "warmup_steps": 1,
+        "benchmark_steps": 2,
+        "eval_task": "all",
+        "niah_seq_len": 16384,
+    },
+    "stage2_round13": {
+        "models": [
+            "amht_v4_stage2_round13",
+            "transformer_v4_stage2_round13_baseline",
+            "mamba3_hybrid_v4_stage2_round13_baseline",
+        ],
+        "seeds": [42],
+        "seq_len": 16384,
+        "steps_scale": 8.0,
+        "warmup_steps": 1,
+        "benchmark_steps": 2,
+        "eval_task": "all",
+        "niah_seq_len": 16384,
+    },
     "stage2_round12_retry_validate": {
         "models": [
             "amht_v4_stage2_round12_retry",
