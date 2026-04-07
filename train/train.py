@@ -183,6 +183,10 @@ def disable_router_straight_through_for_batch(dataset_type: str, batch_sources: 
     return batch_source_name(dataset_type, batch_sources) == "state_tracking"
 
 
+def disable_router_attention_for_batch(dataset_type: str, batch_sources: dict[str, int]) -> bool:
+    return batch_source_name(dataset_type, batch_sources) == "state_tracking"
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train an AMHT model")
     parser.add_argument("--config", default="train/config.yaml", help="Path to YAML config")
@@ -287,12 +291,15 @@ def train() -> None:
         router_mean_weight = float(loss_cfg.get("router_mean_weight", 1.0))
         router_score_weight = float(loss_cfg.get("router_score_weight", 0.0))
         router_straight_through_enabled = True
+        router_attention_enabled = True
         if disable_router_aux_for_batch(dataset_type, batch_sources):
             router_weight = 0.0
             router_mean_weight = 0.0
             router_score_weight = 0.0
         if disable_router_straight_through_for_batch(dataset_type, batch_sources):
             router_straight_through_enabled = False
+        if disable_router_attention_for_batch(dataset_type, batch_sources):
+            router_attention_enabled = False
         losses = compute_loss(
             model=model,
             tokens=tokens,
@@ -304,6 +311,7 @@ def train() -> None:
             router_score_margin=float(loss_cfg.get("router_score_margin", 0.02)),
             router_score_weight=router_score_weight,
             router_straight_through_enabled=router_straight_through_enabled,
+            router_attention_enabled=router_attention_enabled,
         )
         elapsed = time.perf_counter() - started
         local_step = step - start_step
@@ -330,6 +338,7 @@ def train() -> None:
             "effective_router_mean_weight": router_mean_weight,
             "effective_router_score_weight": router_score_weight,
             "effective_router_straight_through_enabled": router_straight_through_enabled,
+            "effective_router_attention_enabled": router_attention_enabled,
             "status": "ok",
         }
         if batch_sources:

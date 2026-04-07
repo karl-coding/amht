@@ -9,6 +9,8 @@ except ImportError as exc:  # pragma: no cover
         "PyTorch is required to run AMHT. Install dependencies from requirements.txt."
     ) from exc
 
+from model.amht import AMHTModel
+
 
 def build_state_tracking_batch(
     *,
@@ -43,7 +45,13 @@ def evaluate_state_tracking_accuracy_chunked(
     total_items = 0
     for start in range(0, tokens.size(0), forward_batch_size):
         end = min(start + forward_batch_size, tokens.size(0))
-        logits, _ = model(tokens[start:end, :-1])
+        model_kwargs = {}
+        if isinstance(model, AMHTModel):
+            model_kwargs = {
+                "router_straight_through_enabled": False,
+                "router_attention_enabled": False,
+            }
+        logits, _ = model(tokens[start:end, :-1], **model_kwargs)
         pred = logits[:, -1].argmax(dim=-1)
         total_correct += int((pred == expected[start:end]).sum().item())
         total_items += end - start

@@ -94,6 +94,7 @@ class AMHTBlock(nn.Module):
         memory_io: LatentMemory | LatentMemoryIO | None = None,
         *,
         router_straight_through_enabled: bool | None = None,
+        router_attention_enabled: bool | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor, dict[str, torch.Tensor]]:
         memory = memory_io if memory_io is not None else self.memory
         if memory is None:
@@ -109,24 +110,37 @@ class AMHTBlock(nn.Module):
             latent_context=latent_state.mean(dim=1, keepdim=True),
             apply_straight_through=router_straight_through_enabled,
         )
-        mixed = ssm_out + self.router.routed_sparse_attention(
-            h_with_memory,
-            token_mask,
-            selected_blocks,
-            selection_gate=selection_gate,
-            apply_straight_through=router_straight_through_enabled,
-        )
+        use_router_attention = True if router_attention_enabled is None else bool(router_attention_enabled)
+        if use_router_attention:
+            routed = self.router.routed_sparse_attention(
+                h_with_memory,
+                token_mask,
+                selected_blocks,
+                selection_gate=selection_gate,
+                apply_straight_through=router_straight_through_enabled,
+            )
+            block_stats = {
+                "router_mean": block_scores.mean(),
+                "router_selected_ratio": selection_stats["selected_ratio"],
+                "router_selected_score_mean": selection_stats["selected_score_mean"],
+                "router_unselected_score_mean": selection_stats["unselected_score_mean"],
+                "router_score_gap": selection_stats["score_gap"],
+            }
+        else:
+            routed = torch.zeros_like(ssm_out)
+            zero = ssm_out.new_zeros(())
+            block_stats = {
+                "router_mean": zero,
+                "router_selected_ratio": zero,
+                "router_selected_score_mean": zero,
+                "router_unselected_score_mean": zero,
+                "router_score_gap": zero,
+            }
+        mixed = ssm_out + routed
         x = x + mixed
         x = x + self.ff(x)
         latent_state = memory.write(latent_state, x)
-        router_mean = block_scores.mean()
-        return x, latent_state, {
-            "router_mean": router_mean,
-            "router_selected_ratio": selection_stats["selected_ratio"],
-            "router_selected_score_mean": selection_stats["selected_score_mean"],
-            "router_unselected_score_mean": selection_stats["unselected_score_mean"],
-            "router_score_gap": selection_stats["score_gap"],
-        }
+        return x, latent_state, block_stats
 
 
 class AMHTModel(nn.Module):
@@ -188,6 +202,7 @@ class AMHTModel(nn.Module):
         tokens: torch.Tensor,
         *,
         router_straight_through_enabled: bool | None = None,
+        router_attention_enabled: bool | None = None,
     ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
         batch, seq_len = tokens.shape
         if seq_len > self.max_seq_len:
@@ -216,6 +231,7 @@ class AMHTModel(nn.Module):
                 latent_state,
                 memory_io=shared_memory,
                 router_straight_through_enabled=router_straight_through_enabled,
+                router_attention_enabled=router_attention_enabled,
             )
             router_mean = router_mean + block_stats["router_mean"]
             router_selected_ratio = router_selected_ratio + block_stats["router_selected_ratio"]
@@ -249,10 +265,13 @@ def compute_loss(
     router_score_margin: float = 0.02,
     router_score_weight: float = 0.0,
     router_straight_through_enabled: bool | None = None,
+    router_attention_enabled: bool | None = None,
 ) -> LossBreakdown:
     model_kwargs: dict[str, bool] = {}
     if router_straight_through_enabled is not None and isinstance(model, AMHTModel):
         model_kwargs["router_straight_through_enabled"] = router_straight_through_enabled
+    if router_attention_enabled is not None and isinstance(model, AMHTModel):
+        model_kwargs["router_attention_enabled"] = router_attention_enabled
     if loss_mode == "final_token":
         inputs = tokens[:, :-1]
         targets = tokens[:, -1]
