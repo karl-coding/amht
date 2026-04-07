@@ -165,6 +165,10 @@ def build_dataset(
     raise SystemExit(f"Unsupported data.dataset_type={dataset_type}")
 
 
+def dataset_type_name(cfg: dict) -> str:
+    return str(cfg.get("data", {}).get("dataset_type", "synthetic")).lower()
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train an AMHT model")
     parser.add_argument("--config", default="train/config.yaml", help="Path to YAML config")
@@ -254,6 +258,7 @@ def train() -> None:
 
     total_samples = (start_step + total_steps) * int(train_cfg["batch_size"])
     dataset = build_dataset(cfg, args.seq_len, total_samples, seed=seed)
+    dataset_type = dataset_type_name(cfg)
 
     model.train()
     started = time.perf_counter()
@@ -293,6 +298,7 @@ def train() -> None:
             "seq_len": args.seq_len,
             "config": args.config,
             "seed": seed,
+            "dataset_type": dataset_type,
             "status": "ok",
         }
         if batch_sources:
@@ -303,7 +309,7 @@ def train() -> None:
             metrics["status"] = "non_finite_loss"
             with log_path.open("a", encoding="utf-8") as handle:
                 handle.write(json.dumps(metrics) + "\n")
-            batch_source = metrics.get("batch_source", "mixed")
+            batch_source = metrics.get("batch_source", dataset_type)
             raise SystemExit(
                 f"Non-finite training loss at step {step} for {args.config} "
                 f"(seed={seed}, batch_source={batch_source})"
@@ -317,7 +323,7 @@ def train() -> None:
             metrics["status"] = "non_finite_grad_norm"
             with log_path.open("a", encoding="utf-8") as handle:
                 handle.write(json.dumps(metrics) + "\n")
-            batch_source = metrics.get("batch_source", "mixed")
+            batch_source = metrics.get("batch_source", dataset_type)
             raise SystemExit(
                 f"Non-finite gradient norm at step {step} for {args.config} "
                 f"(seed={seed}, batch_source={batch_source})"
@@ -327,7 +333,7 @@ def train() -> None:
             metrics["status"] = "non_finite_parameters"
             with log_path.open("a", encoding="utf-8") as handle:
                 handle.write(json.dumps(metrics) + "\n")
-            batch_source = metrics.get("batch_source", "mixed")
+            batch_source = metrics.get("batch_source", dataset_type)
             raise SystemExit(
                 f"Non-finite model parameters at step {step} for {args.config} "
                 f"(seed={seed}, batch_source={batch_source})"

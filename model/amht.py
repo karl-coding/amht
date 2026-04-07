@@ -51,6 +51,7 @@ class AMHTBlock(nn.Module):
         router_straight_through_scores: bool = False,
         router_straight_through_temperature: float = 0.1,
         router_straight_through_scale: float = 0.1,
+        router_straight_through_input_clip: float | None = None,
     ) -> None:
         super().__init__()
         self.norm = nn.LayerNorm(dim)
@@ -75,6 +76,7 @@ class AMHTBlock(nn.Module):
             straight_through_scores=router_straight_through_scores,
             straight_through_temperature=router_straight_through_temperature,
             straight_through_scale=router_straight_through_scale,
+            straight_through_input_clip=router_straight_through_input_clip,
         )
         self.ff = nn.Sequential(
             nn.LayerNorm(dim),
@@ -169,6 +171,7 @@ class AMHTModel(nn.Module):
                     router_straight_through_scores=bool(model_cfg.get("router_straight_through_scores", False)),
                     router_straight_through_temperature=float(model_cfg.get("router_straight_through_temperature", 0.1)),
                     router_straight_through_scale=float(model_cfg.get("router_straight_through_scale", 0.1)),
+                    router_straight_through_input_clip=model_cfg.get("router_straight_through_input_clip"),
                 )
                 for layer_index in range(layers)
             ]

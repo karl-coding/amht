@@ -28,6 +28,7 @@ class SparseRouter(nn.Module):
         straight_through_scores: bool = False,
         straight_through_temperature: float = 0.1,
         straight_through_scale: float = 0.1,
+        straight_through_input_clip: float | None = None,
     ) -> None:
         super().__init__()
         if dim % heads != 0:
@@ -53,6 +54,11 @@ class SparseRouter(nn.Module):
         self.straight_through_scores = bool(straight_through_scores)
         self.straight_through_temperature = max(1e-3, float(straight_through_temperature))
         self.straight_through_scale = float(straight_through_scale)
+        if straight_through_input_clip is None:
+            self.straight_through_input_clip = None
+        else:
+            clip = float(straight_through_input_clip)
+            self.straight_through_input_clip = clip if clip > 0.0 else None
         self._reset_parameters()
 
     def _reset_parameters(self) -> None:
@@ -332,6 +338,15 @@ class SparseRouter(nn.Module):
             gate_tokens = selection_gate.unsqueeze(-1).expand(-1, -1, block_size).reshape(batch, num_blocks * block_size)
             gate_tokens = gate_tokens[:, :seq_len].unsqueeze(-1).to(output_tokens.dtype)
             # Forward pass stays unchanged; backward pass exposes a task-driven signal to router scores.
-            output_tokens = output_tokens + self.straight_through_scale * x * (gate_tokens - gate_tokens.detach())
+            # Bound the detached activation scale so long-context training cannot explode router gradients.
+            straight_through_input = x.detach()
+            if self.straight_through_input_clip is not None:
+                straight_through_input = straight_through_input.clamp(
+                    min=-self.straight_through_input_clip,
+                    max=self.straight_through_input_clip,
+                )
+            output_tokens = output_tokens + self.straight_through_scale * straight_through_input * (
+                gate_tokens - gate_tokens.detach()
+            )
 
         return output_tokens

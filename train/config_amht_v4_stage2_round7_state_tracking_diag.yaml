@@ -17,6 +17,7 @@ model:
   router_straight_through_scores: true
   router_straight_through_temperature: 0.06
   router_straight_through_scale: 0.20
+  router_straight_through_input_clip: 5.0
   ssm_impl: selective
   ssm_groups: 4
   ssm_state_size: 96
