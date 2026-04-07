@@ -34,6 +34,13 @@ class ModelSpec:
 
 
 MODEL_SPECS = {
+    "amht_v4_stage2_round11": ModelSpec(
+        key="amht_v4_stage2_round11",
+        label="AMHT-V4-Stage2-R11",
+        config="train/config_amht_v4_stage2_round11.yaml",
+        color="#7f1d1d",
+        marker="*",
+    ),
     "amht_v4_stage2_round10": ModelSpec(
         key="amht_v4_stage2_round10",
         label="AMHT-V4-Stage2-R10",
@@ -202,6 +209,13 @@ MODEL_SPECS = {
         color="#f67280",
         marker="s",
     ),
+    "transformer_v4_stage2_round11_baseline": ModelSpec(
+        key="transformer_v4_stage2_round11_baseline",
+        label="Transformer",
+        config="train/config_transformer_v4_stage2_round11_baseline.yaml",
+        color="#f67280",
+        marker="s",
+    ),
     "transformer_v4_stage2_round7_state_tracking_diag_baseline": ModelSpec(
         key="transformer_v4_stage2_round7_state_tracking_diag_baseline",
         label="Transformer-State-Diag",
@@ -251,6 +265,13 @@ MODEL_SPECS = {
         color="#2a9d8f",
         marker="D",
     ),
+    "mamba3_hybrid_v4_stage2_round11_baseline": ModelSpec(
+        key="mamba3_hybrid_v4_stage2_round11_baseline",
+        label="Mamba-3-Inspired Hybrid",
+        config="train/config_mamba3_hybrid_v4_stage2_round11_baseline.yaml",
+        color="#2a9d8f",
+        marker="D",
+    ),
     "mamba3_hybrid_v4_stage2_round7_state_tracking_diag_baseline": ModelSpec(
         key="mamba3_hybrid_v4_stage2_round7_state_tracking_diag_baseline",
         label="Mamba-3-Inspired Hybrid-State-Diag",
@@ -262,6 +283,34 @@ MODEL_SPECS = {
 
 
 PRESETS = {
+    "stage2_round11_validate": {
+        "models": [
+            "amht_v4_stage2_round11",
+            "transformer_v4_stage2_round11_baseline",
+            "mamba3_hybrid_v4_stage2_round11_baseline",
+        ],
+        "seeds": [42, 43, 44],
+        "seq_len": 16384,
+        "steps_scale": 4.0,
+        "warmup_steps": 1,
+        "benchmark_steps": 2,
+        "eval_task": "all",
+        "niah_seq_len": 16384,
+    },
+    "stage2_round11": {
+        "models": [
+            "amht_v4_stage2_round11",
+            "transformer_v4_stage2_round11_baseline",
+            "mamba3_hybrid_v4_stage2_round11_baseline",
+        ],
+        "seeds": [42],
+        "seq_len": 16384,
+        "steps_scale": 4.0,
+        "warmup_steps": 1,
+        "benchmark_steps": 2,
+        "eval_task": "all",
+        "niah_seq_len": 16384,
+    },
     "stage2_round10_validate": {
         "models": [
             "amht_v4_stage2_round10",
@@ -798,6 +847,7 @@ def build_summary(
     benchmark_steps: int,
 ) -> dict:
     summary: dict[str, dict] = {}
+    state_tracking_task_name = None
     for key in model_keys:
         model_runs = runs_by_model[key]
         niah_hits_by_seed: list[float] = []
@@ -815,6 +865,9 @@ def build_summary(
             if hits is not None and cases is not None:
                 niah_hits_by_seed.append(float(hits))
                 niah_cases_by_seed.append(cases)
+            candidate_state_task = run.get("eval", {}).get("state_tracking", {}).get("task_name")
+            if isinstance(candidate_state_task, str) and state_tracking_task_name is None:
+                state_tracking_task_name = candidate_state_task
         niah_hits_mean, niah_hits_std = mean_std(niah_hits_by_seed)
         cases_per_seed = niah_cases_by_seed[0] if niah_cases_by_seed and all(cases == niah_cases_by_seed[0] for cases in niah_cases_by_seed) else None
         summary[key] = {
@@ -939,6 +992,7 @@ def build_summary(
         "benchmark_steps": benchmark_steps,
         "primary_seq_len": primary_seq_len,
         "niah_seq_len": niah_seq_len,
+        "state_tracking_task_name": state_tracking_task_name,
         "state_tracking_seq_lens": state_tracking_seq_lens,
         "scaling_lengths": scaling_lengths,
     }
@@ -984,8 +1038,9 @@ def write_summary_markdown(
         metadata_lines.append(f"- NIAH seq_len: `{summary['niah_seq_len']}`")
     metadata_lines.append("- NIAH hits aggregate exact correct retrievals across all depths and all seeds.")
     if state_tracking_seq_lens:
+        state_tracking_task_name = str(summary.get("state_tracking_task_name", "state_tracking"))
         metadata_lines.append(
-            "- State-tracking metric: the eval bundle's `state_tracking` section, using modulo-sum final-token accuracy."
+            f"- State-tracking metric: the eval bundle's `state_tracking` section, using `{state_tracking_task_name}` final-token accuracy."
         )
         metadata_lines.append(f"- State-tracking seq_lens: `{state_tracking_seq_lens}`")
     if metadata_lines:

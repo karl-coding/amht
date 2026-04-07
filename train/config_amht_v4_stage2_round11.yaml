@@ -1,0 +1,92 @@
+seed: 42
+
+model:
+  architecture: amht
+  vocab_size: 32000
+  dim: 256
+  hidden_dim: 768
+  layers: 4
+  heads: 4
+  latent_tokens: 48
+  memory_per_layer_io: true
+  router_ratio: 0.1
+  router_neighbor_radius: 1
+  router_neighbor_bonus: 0.2
+  router_feature_sources: 4
+  router_expand_mode: expand
+  router_straight_through_scores: true
+  router_straight_through_temperature: 0.06
+  router_straight_through_scale: 0.20
+  router_straight_through_input_clip: 5.0
+  ssm_impl: selective
+  ssm_groups: 4
+  ssm_state_size: 96
+  ssm_conv_kernel: 5
+  ssm_complex: true
+  attention_chunk_size: 256
+  block_size: 128
+  max_seq_len: 32768
+
+training:
+  batch_size: 1
+  micro_batch_size: 1
+  steps: 200
+  lr: 0.0003
+  weight_decay: 0.01
+  grad_clip: 1.0
+  log_every: 2
+  checkpoint_dir: checkpoints
+
+loss:
+  mode: final_token
+  main_weight: 1.0
+  router_weight: 1.0
+  router_mean_target: 0.1
+  router_mean_weight: 0.0
+  router_score_margin: 0.03
+  router_score_weight: 4.0
+
+data:
+  dataset_type: mixed
+  mixture:
+    retrieval_weight: 0.85
+    state_tracking_weight: 0.15
+  retrieval:
+    key_start: 100
+    value_start: 1000
+    num_pairs: 24
+    num_keys: 256
+    depth_choices: [0.05, 0.2, 0.4, 0.6, 0.8, 0.92]
+    pad_token: 0
+  state_tracking:
+    task: flipflop
+    num_slots: 8
+    value_count: 2
+    min_query_gap_tokens: 4096
+
+evaluation:
+  batch_size: 1
+  warmup_steps: 1
+  benchmark_steps: 4
+  device: auto
+  scaling_lengths: [1024, 2048, 4096, 8192, 16384, 32768]
+  niah:
+    seq_len: 16384
+    batch_size: 4
+    forward_batch_size: 1
+    repeats: 4
+    needle_depths: [0.05, 0.2, 0.4, 0.6, 0.8, 0.92, 0.98]
+    key_start: 100
+    value_start: 1000
+    num_pairs: 24
+    num_keys: 256
+    pad_token: 0
+  state_tracking:
+    task: flipflop
+    num_slots: 8
+    value_count: 2
+    min_query_gap_tokens: 4096
+    batch_size: 1
+    forward_batch_size: 1
+    repeats: 32
+    seq_lens: [1024, 4096, 8192, 16384, 32768]

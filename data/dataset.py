@@ -128,6 +128,137 @@ class RetrievalDataset:
         return tokens
 
 
+def _torch_randint(
+    low: int,
+    high: int,
+    size: tuple[int, ...],
+    *,
+    generator: torch.Generator | None = None,
+    device: torch.device | None = None,
+) -> torch.Tensor:
+    kwargs = {"dtype": torch.long}
+    if generator is not None:
+        kwargs["generator"] = generator
+    if device is not None:
+        kwargs["device"] = device
+    return torch.randint(low, high, size, **kwargs)
+
+
+def _resolve_flipflop_layout(
+    *,
+    vocab_size: int,
+    num_slots: int,
+    value_count: int,
+    slot_start: int,
+    value_start: int | None,
+    query_start: int | None,
+) -> tuple[int, int, int]:
+    if num_slots < 2:
+        raise ValueError("Flipflop state-tracking requires num_slots >= 2")
+    if value_count < 2:
+        raise ValueError("Flipflop state-tracking requires value_count >= 2")
+    resolved_value_start = slot_start + num_slots if value_start is None else value_start
+    resolved_query_start = resolved_value_start + value_count if query_start is None else query_start
+    if slot_start < 0:
+        raise ValueError("Flipflop slot_start must be >= 0")
+    if resolved_value_start < slot_start + num_slots:
+        raise ValueError("Flipflop value_start must come after the slot token range")
+    if resolved_query_start < resolved_value_start + value_count:
+        raise ValueError("Flipflop query_start must come after the value token range")
+    if resolved_query_start + num_slots > vocab_size:
+        raise ValueError("Flipflop token ranges must fit inside the configured vocabulary")
+    return slot_start, resolved_value_start, resolved_query_start
+
+
+def build_state_tracking_batch(
+    *,
+    batch_size: int,
+    vocab_size: int,
+    seq_len: int,
+    task: str = "modsum",
+    modulus: int = 16,
+    digit_start: int = 0,
+    num_slots: int = 8,
+    value_count: int = 2,
+    slot_start: int = 0,
+    value_start: int | None = None,
+    query_start: int | None = None,
+    min_query_gap_tokens: int = 4096,
+    generator: torch.Generator | None = None,
+    device: torch.device | None = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    if batch_size <= 0:
+        raise ValueError("State-tracking batch_size must be > 0")
+    if seq_len < 2:
+        raise ValueError("State-tracking requires seq_len >= 2")
+
+    if task == "modsum":
+        if modulus <= 0:
+            raise ValueError("StateTrackingDataset requires modulus > 0")
+        if digit_start < 0 or digit_start + modulus > vocab_size:
+            raise ValueError("StateTrackingDataset digits must fit inside the configured vocabulary")
+        digits = _torch_randint(
+            digit_start,
+            digit_start + modulus,
+            (batch_size, seq_len - 1),
+            generator=generator,
+            device=device,
+        )
+        expected = ((digits - digit_start).sum(dim=1) % modulus) + digit_start
+        tokens = torch.empty((batch_size, seq_len), dtype=torch.long, device=device)
+        tokens[:, :-1] = digits
+        tokens[:, -1] = expected
+        return tokens, expected
+
+    if task != "flipflop":
+        raise ValueError(f"Unsupported state-tracking task: {task}")
+    if (seq_len - 2) % 2 != 0:
+        raise ValueError("Flipflop state-tracking requires seq_len - 2 to be divisible by 2")
+
+    slot_start, value_start, query_start = _resolve_flipflop_layout(
+        vocab_size=vocab_size,
+        num_slots=num_slots,
+        value_count=value_count,
+        slot_start=slot_start,
+        value_start=value_start,
+        query_start=query_start,
+    )
+    operation_count = (seq_len - 2) // 2
+    if operation_count < 2:
+        raise ValueError("Flipflop state-tracking requires at least two operations before the query")
+    effective_gap_tokens = max(int(min_query_gap_tokens), 2)
+    effective_gap_pairs = min(max(effective_gap_tokens // 2, 1), operation_count - 1)
+    max_last_query_index = max(operation_count - effective_gap_pairs - 1, 0)
+
+    tokens = torch.empty((batch_size, seq_len), dtype=torch.long, device=device)
+    expected = torch.empty((batch_size,), dtype=torch.long, device=device)
+    for batch_index in range(batch_size):
+        query_slot = int(_torch_randint(0, num_slots, (), generator=generator, device=device).item())
+        last_query_index = int(
+            _torch_randint(0, max_last_query_index + 1, (), generator=generator, device=device).item()
+        )
+        answer_value = int(_torch_randint(0, value_count, (), generator=generator, device=device).item())
+
+        for op_index in range(operation_count):
+            if op_index == last_query_index:
+                slot = query_slot
+                value = answer_value
+            else:
+                if op_index > last_query_index:
+                    draw = int(_torch_randint(0, num_slots - 1, (), generator=generator, device=device).item())
+                    slot = draw if draw < query_slot else draw + 1
+                else:
+                    slot = int(_torch_randint(0, num_slots, (), generator=generator, device=device).item())
+                value = int(_torch_randint(0, value_count, (), generator=generator, device=device).item())
+            tokens[batch_index, 2 * op_index] = slot_start + slot
+            tokens[batch_index, 2 * op_index + 1] = value_start + value
+
+        tokens[batch_index, -2] = query_start + query_slot
+        tokens[batch_index, -1] = value_start + answer_value
+        expected[batch_index] = value_start + answer_value
+    return tokens, expected
+
+
 class StateTrackingDataset:
     """State-sensitive final-token task used to probe recurrent tracking."""
 
@@ -140,22 +271,46 @@ class StateTrackingDataset:
         task: str = "modsum",
         modulus: int = 16,
         digit_start: int = 0,
+        num_slots: int = 8,
+        value_count: int = 2,
+        slot_start: int = 0,
+        value_start: int | None = None,
+        query_start: int | None = None,
+        min_query_gap_tokens: int = 4096,
         seed: int | None = None,
     ) -> None:
-        if task != "modsum":
-            raise ValueError(f"Unsupported state-tracking task: {task}")
         if seq_len < 2:
             raise ValueError("StateTrackingDataset requires seq_len >= 2")
-        if modulus <= 0:
-            raise ValueError("StateTrackingDataset requires modulus > 0")
-        if digit_start < 0 or digit_start + modulus > vocab_size:
-            raise ValueError("StateTrackingDataset digits must fit inside the configured vocabulary")
+        if task == "modsum":
+            if modulus <= 0:
+                raise ValueError("StateTrackingDataset requires modulus > 0")
+            if digit_start < 0 or digit_start + modulus > vocab_size:
+                raise ValueError("StateTrackingDataset digits must fit inside the configured vocabulary")
+        elif task == "flipflop":
+            if (seq_len - 2) % 2 != 0:
+                raise ValueError("Flipflop state-tracking requires seq_len - 2 to be divisible by 2")
+            _resolve_flipflop_layout(
+                vocab_size=vocab_size,
+                num_slots=num_slots,
+                value_count=value_count,
+                slot_start=slot_start,
+                value_start=value_start,
+                query_start=query_start,
+            )
+        else:
+            raise ValueError(f"Unsupported state-tracking task: {task}")
         self.vocab_size = vocab_size
         self.seq_len = seq_len
         self.total_samples = total_samples
         self.task = task
         self.modulus = modulus
         self.digit_start = digit_start
+        self.num_slots = num_slots
+        self.value_count = value_count
+        self.slot_start = slot_start
+        self.value_start = value_start
+        self.query_start = query_start
+        self.min_query_gap_tokens = min_query_gap_tokens
         self.seed = seed
 
     def __len__(self) -> int:
@@ -166,20 +321,22 @@ class StateTrackingDataset:
         if self.seed is not None:
             generator = torch.Generator()
             generator.manual_seed(self.seed + index)
-        digit_kwargs = {"dtype": torch.long}
-        if generator is not None:
-            digit_kwargs["generator"] = generator
-        digits = torch.randint(
-            self.digit_start,
-            self.digit_start + self.modulus,
-            (self.seq_len - 1,),
-            **digit_kwargs,
+        tokens, _ = build_state_tracking_batch(
+            batch_size=1,
+            vocab_size=self.vocab_size,
+            seq_len=self.seq_len,
+            task=self.task,
+            modulus=self.modulus,
+            digit_start=self.digit_start,
+            num_slots=self.num_slots,
+            value_count=self.value_count,
+            slot_start=self.slot_start,
+            value_start=self.value_start,
+            query_start=self.query_start,
+            min_query_gap_tokens=self.min_query_gap_tokens,
+            generator=generator,
         )
-        target = ((digits - self.digit_start).sum() % self.modulus) + self.digit_start
-        tokens = torch.empty((self.seq_len,), dtype=torch.long)
-        tokens[:-1] = digits
-        tokens[-1] = target
-        return tokens
+        return tokens[0]
 
 
 class MixedDataset:

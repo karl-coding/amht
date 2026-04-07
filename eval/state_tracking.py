@@ -9,29 +9,8 @@ except ImportError as exc:  # pragma: no cover
         "PyTorch is required to run AMHT. Install dependencies from requirements.txt."
     ) from exc
 
+from data.dataset import build_state_tracking_batch
 from model.amht import AMHTModel
-
-
-def build_state_tracking_batch(
-    *,
-    batch_size: int,
-    seq_len: int,
-    modulus: int,
-    digit_start: int,
-    device: torch.device,
-) -> tuple[torch.Tensor, torch.Tensor]:
-    digits = torch.randint(
-        digit_start,
-        digit_start + modulus,
-        (batch_size, seq_len - 1),
-        dtype=torch.long,
-        device=device,
-    )
-    expected = ((digits - digit_start).sum(dim=1) % modulus) + digit_start
-    tokens = torch.empty((batch_size, seq_len), dtype=torch.long, device=device)
-    tokens[:, :-1] = digits
-    tokens[:, -1] = expected
-    return tokens, expected
 
 
 @torch.no_grad()
@@ -63,8 +42,6 @@ def evaluate_state_tracking_accuracy_chunked(
 def benchmark_state_tracking(model, cfg: dict, device: torch.device) -> dict:
     tracking_cfg = cfg.get("evaluation", {}).get("state_tracking", {})
     task_name = str(tracking_cfg.get("task", "modsum"))
-    if task_name != "modsum":
-        raise SystemExit(f"Unsupported evaluation.state_tracking.task={task_name}")
 
     batch_size = int(tracking_cfg.get("batch_size", 1))
     forward_batch_size = int(tracking_cfg.get("forward_batch_size", batch_size))
@@ -77,6 +54,12 @@ def benchmark_state_tracking(model, cfg: dict, device: torch.device) -> dict:
     seq_lens = [int(seq_len) for seq_len in tracking_cfg.get("seq_lens", default_seq_lens)]
     modulus = int(tracking_cfg.get("modulus", 16))
     digit_start = int(tracking_cfg.get("digit_start", 0))
+    num_slots = int(tracking_cfg.get("num_slots", 8))
+    value_count = int(tracking_cfg.get("value_count", 2))
+    slot_start = int(tracking_cfg.get("slot_start", 0))
+    value_start = tracking_cfg.get("value_start")
+    query_start = tracking_cfg.get("query_start")
+    min_query_gap_tokens = int(tracking_cfg.get("min_query_gap_tokens", 4096))
 
     scores = []
     results = []
@@ -85,9 +68,17 @@ def benchmark_state_tracking(model, cfg: dict, device: torch.device) -> dict:
         for _ in range(repeats):
             tokens, expected = build_state_tracking_batch(
                 batch_size=batch_size,
+                vocab_size=int(cfg["model"]["vocab_size"]),
                 seq_len=seq_len,
+                task=task_name,
                 modulus=modulus,
                 digit_start=digit_start,
+                num_slots=num_slots,
+                value_count=value_count,
+                slot_start=slot_start,
+                value_start=None if value_start is None else int(value_start),
+                query_start=None if query_start is None else int(query_start),
+                min_query_gap_tokens=min_query_gap_tokens,
                 device=device,
             )
             seq_scores.append(
@@ -111,6 +102,12 @@ def benchmark_state_tracking(model, cfg: dict, device: torch.device) -> dict:
         "repeats": repeats,
         "modulus": modulus,
         "digit_start": digit_start,
+        "num_slots": num_slots,
+        "value_count": value_count,
+        "slot_start": slot_start,
+        "value_start": value_start,
+        "query_start": query_start,
+        "min_query_gap_tokens": min_query_gap_tokens,
         "seq_lens": seq_lens,
         "results": results,
         "accuracy_by_seq_len": scores,

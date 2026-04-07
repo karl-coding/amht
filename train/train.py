@@ -124,6 +124,12 @@ def build_state_tracking_dataset(
         task=str(state_cfg.get("task", "modsum")),
         modulus=int(state_cfg.get("modulus", 16)),
         digit_start=int(state_cfg.get("digit_start", 0)),
+        num_slots=int(state_cfg.get("num_slots", 8)),
+        value_count=int(state_cfg.get("value_count", 2)),
+        slot_start=int(state_cfg.get("slot_start", 0)),
+        value_start=None if state_cfg.get("value_start") is None else int(state_cfg["value_start"]),
+        query_start=None if state_cfg.get("query_start") is None else int(state_cfg["query_start"]),
+        min_query_gap_tokens=int(state_cfg.get("min_query_gap_tokens", 4096)),
         seed=seed,
     )
 

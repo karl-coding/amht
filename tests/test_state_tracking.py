@@ -42,6 +42,34 @@ class StateTrackingDatasetTests(unittest.TestCase):
         self.assertTrue(torch.equal(left[3], right[3]))
         self.assertFalse(torch.equal(left[3], other[3]))
 
+    def test_flipflop_target_matches_last_write_before_query_gap(self) -> None:
+        dataset = StateTrackingDataset(
+            vocab_size=64,
+            seq_len=10,
+            total_samples=2,
+            task="flipflop",
+            num_slots=3,
+            value_count=2,
+            slot_start=0,
+            value_start=8,
+            query_start=16,
+            min_query_gap_tokens=4,
+            seed=7,
+        )
+
+        sample = dataset[0]
+        query_slot = int(sample[-2].item()) - 16
+        answer = int(sample[-1].item())
+        updates = sample[:-2].view(-1, 2)
+
+        decoded_slots = [int(pair[0].item()) for pair in updates]
+        decoded_values = [int(pair[1].item()) for pair in updates]
+        self.assertNotIn(query_slot, decoded_slots[-2:])
+
+        last_match = max(index for index, slot in enumerate(decoded_slots) if slot == query_slot)
+        expected = decoded_values[last_match]
+        self.assertEqual(answer, expected)
+
 
 class MixedDatasetTests(unittest.TestCase):
     def test_source_sampling_tracks_configured_weights(self) -> None:
