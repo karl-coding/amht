@@ -39,6 +39,7 @@ def pick_best_amht(summary: dict) -> str | None:
     preferred_order = [
         key
         for key in (
+            "amht_v4_stage2_round10",
             "amht_v4_stage2_round9",
             "amht_v4_stage2_round8",
             "amht_v4_stage2_round7_retry",
@@ -107,6 +108,7 @@ def build_note(summary: dict) -> str:
     stable_mixed_mode = best_amht is not None and any(
         tag in best_amht
         for tag in (
+            "stage2_round10",
             "stage2_round7_retry",
             "stage2_round8",
             "stage2_round9",
@@ -151,6 +153,7 @@ def build_note(summary: dict) -> str:
             (
                 key
                 for key in (
+                    "transformer_v4_stage2_round10_baseline",
                     "transformer_v4_stage2_round7_retry_baseline",
                     "transformer_v4_stage2_round7_baseline",
                     "transformer_v4_stage2_round4_baseline",
@@ -164,6 +167,7 @@ def build_note(summary: dict) -> str:
             (
                 key
                 for key in (
+                    "mamba3_hybrid_v4_stage2_round10_baseline",
                     "mamba3_hybrid_v4_stage2_round7_retry_baseline",
                     "mamba3_hybrid_v4_stage2_round7_baseline",
                     "mamba3_hybrid_v4_stage2_round4_baseline",
@@ -311,7 +315,12 @@ def build_note(summary: dict) -> str:
                 [
                     "Recommendation:",
                     *(
-                        [
+                    [
+                        "- Quality is still short of target. Freeze the stable retry architecture and increase training budget next instead of opening another backbone axis.",
+                        "- If the longer-budget run still leaves all models clustered near chance on state-tracking, redesign or simplify the benchmark before more architecture tuning.",
+                    ]
+                        if stage_label == "2" and stable_mixed_mode
+                        else [
                             "- Quality is still short of target. Keep the round-four router and memory settings fixed and use the state-tracking benchmark as the next gate.",
                             "- Re-open only backbone capacity if AMHT still cannot recover quality without breaking the mixed-task tradeoff.",
                         ]
@@ -410,10 +419,10 @@ def build_note(summary: dict) -> str:
             [
                 *(
                     [
-                        "1. Keep the stable retry mix and frozen router or memory settings.",
-                        "2. Change only one backbone axis at a time; revert the previous losing backbone change before the next run.",
-                        "3. Use state-tracking as the tie-breaker, but reject any run that gives back the retrieval or throughput tradeoff too aggressively.",
-                        "4. If the next backbone run still fails, treat the current mod-sum benchmark as underpowered and redesign or extend it before drawing architecture conclusions.",
+                        "1. Keep the stable retry mix and freeze router, memory, and backbone settings.",
+                        "2. Increase training budget only with the same architecture before opening new axes.",
+                        "3. If all models still cluster near chance on state-tracking, redesign or simplify the benchmark before more architecture work.",
+                        "4. Re-open backbone tuning only after the longer-budget run proves the benchmark is informative.",
                     ]
                     if stage_label == "2" and stable_mixed_mode
                     else [
