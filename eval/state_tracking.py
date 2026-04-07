@@ -50,6 +50,7 @@ def evaluate_state_tracking_accuracy_chunked(
             model_kwargs = {
                 "router_straight_through_enabled": False,
                 "router_attention_enabled": False,
+                "memory_enabled": False,
             }
         logits, _ = model(tokens[start:end, :-1], **model_kwargs)
         pred = logits[:, -1].argmax(dim=-1)

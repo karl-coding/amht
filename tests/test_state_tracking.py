@@ -5,6 +5,7 @@ import unittest
 import torch
 
 from data.dataset import MixedDataset, StateTrackingDataset
+from model.amht import AMHTModel
 
 
 class DummyDataset:
@@ -80,6 +81,39 @@ class MixedDatasetTests(unittest.TestCase):
         sample = mixed[3]
         self.assertEqual(int(sample[0].item()), 1)
         self.assertEqual(int(sample[1].item()), 3)
+
+
+class AMHTStateTrackingBypassTests(unittest.TestCase):
+    def test_can_disable_router_and_memory_paths_for_state_tracking(self) -> None:
+        cfg = {
+            "model": {
+                "architecture": "amht",
+                "vocab_size": 64,
+                "dim": 16,
+                "hidden_dim": 32,
+                "layers": 2,
+                "heads": 2,
+                "latent_tokens": 4,
+                "memory_per_layer_io": True,
+                "router_ratio": 0.1,
+                "ssm_state_size": 8,
+                "max_seq_len": 16,
+                "ssm_impl": "surrogate",
+            }
+        }
+        model = AMHTModel(cfg)
+        tokens = torch.randint(0, 16, (2, 8), dtype=torch.long)
+
+        logits, stats = model(
+            tokens,
+            router_straight_through_enabled=False,
+            router_attention_enabled=False,
+            memory_enabled=False,
+        )
+
+        self.assertEqual(tuple(logits.shape), (2, 8, 64))
+        self.assertEqual(float(stats["router_mean"].item()), 0.0)
+        self.assertEqual(float(stats["router_selected_ratio"].item()), 0.0)
 
 
 if __name__ == "__main__":

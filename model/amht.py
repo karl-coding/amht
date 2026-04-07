@@ -95,14 +95,19 @@ class AMHTBlock(nn.Module):
         *,
         router_straight_through_enabled: bool | None = None,
         router_attention_enabled: bool | None = None,
+        memory_enabled: bool | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor, dict[str, torch.Tensor]]:
         memory = memory_io if memory_io is not None else self.memory
         if memory is None:
             raise ValueError("AMHTBlock requires a memory I/O module")
+        use_memory = True if memory_enabled is None else bool(memory_enabled)
 
         h = self.norm(x)
-        latent_read = memory.read(latent_state, h)
-        h_with_memory = h + latent_read
+        if use_memory:
+            latent_read = memory.read(latent_state, h)
+            h_with_memory = h + latent_read
+        else:
+            h_with_memory = h
         ssm_out, recurrent_features = self.ssm(h_with_memory, return_features=True)
         block_scores, token_mask, selected_blocks, selection_gate, selection_stats = self.router.block_gate(
             h_with_memory,
@@ -139,7 +144,8 @@ class AMHTBlock(nn.Module):
         mixed = ssm_out + routed
         x = x + mixed
         x = x + self.ff(x)
-        latent_state = memory.write(latent_state, x)
+        if use_memory:
+            latent_state = memory.write(latent_state, x)
         return x, latent_state, block_stats
 
 
@@ -203,21 +209,25 @@ class AMHTModel(nn.Module):
         *,
         router_straight_through_enabled: bool | None = None,
         router_attention_enabled: bool | None = None,
+        memory_enabled: bool | None = None,
     ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
         batch, seq_len = tokens.shape
         if seq_len > self.max_seq_len:
             raise ValueError(f"Sequence length {seq_len} exceeds max_seq_len {self.max_seq_len}")
 
         x = self.token_emb(tokens) + self.pos_emb[:, :seq_len]
+        use_memory = True if memory_enabled is None else bool(memory_enabled)
         if self.memory_per_layer_io:
             if self.memory_state is None or self.input_memory is None:
                 raise ValueError("Per-layer memory I/O requires memory_state and input_memory")
             latent_state = self.memory_state.init_state(batch_size=batch)
-            x = x + self.input_memory.read(latent_state, x)
+            if use_memory:
+                x = x + self.input_memory.read(latent_state, x)
             shared_memory: LatentMemory | LatentMemoryIO | None = None
         else:
             latent_state = self.memory.init_state(batch_size=batch)
-            x = x + self.memory.read(latent_state, x)
+            if use_memory:
+                x = x + self.memory.read(latent_state, x)
             shared_memory = self.memory
 
         router_mean = x.new_zeros(())
@@ -232,6 +242,7 @@ class AMHTModel(nn.Module):
                 memory_io=shared_memory,
                 router_straight_through_enabled=router_straight_through_enabled,
                 router_attention_enabled=router_attention_enabled,
+                memory_enabled=memory_enabled,
             )
             router_mean = router_mean + block_stats["router_mean"]
             router_selected_ratio = router_selected_ratio + block_stats["router_selected_ratio"]
@@ -266,12 +277,15 @@ def compute_loss(
     router_score_weight: float = 0.0,
     router_straight_through_enabled: bool | None = None,
     router_attention_enabled: bool | None = None,
+    memory_enabled: bool | None = None,
 ) -> LossBreakdown:
     model_kwargs: dict[str, bool] = {}
     if router_straight_through_enabled is not None and isinstance(model, AMHTModel):
         model_kwargs["router_straight_through_enabled"] = router_straight_through_enabled
     if router_attention_enabled is not None and isinstance(model, AMHTModel):
         model_kwargs["router_attention_enabled"] = router_attention_enabled
+    if memory_enabled is not None and isinstance(model, AMHTModel):
+        model_kwargs["memory_enabled"] = memory_enabled
     if loss_mode == "final_token":
         inputs = tokens[:, :-1]
         targets = tokens[:, -1]
