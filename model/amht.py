@@ -92,6 +92,8 @@ class AMHTBlock(nn.Module):
         x: torch.Tensor,
         latent_state: torch.Tensor,
         memory_io: LatentMemory | LatentMemoryIO | None = None,
+        *,
+        router_straight_through_enabled: bool | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor, dict[str, torch.Tensor]]:
         memory = memory_io if memory_io is not None else self.memory
         if memory is None:
@@ -105,12 +107,14 @@ class AMHTBlock(nn.Module):
             h_with_memory,
             recurrent_context=recurrent_features,
             latent_context=latent_state.mean(dim=1, keepdim=True),
+            apply_straight_through=router_straight_through_enabled,
         )
         mixed = ssm_out + self.router.routed_sparse_attention(
             h_with_memory,
             token_mask,
             selected_blocks,
             selection_gate=selection_gate,
+            apply_straight_through=router_straight_through_enabled,
         )
         x = x + mixed
         x = x + self.ff(x)
@@ -179,7 +183,12 @@ class AMHTModel(nn.Module):
         self.norm = nn.LayerNorm(self.dim)
         self.lm_head = nn.Linear(self.dim, self.vocab_size, bias=False)
 
-    def forward(self, tokens: torch.Tensor) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+    def forward(
+        self,
+        tokens: torch.Tensor,
+        *,
+        router_straight_through_enabled: bool | None = None,
+    ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
         batch, seq_len = tokens.shape
         if seq_len > self.max_seq_len:
             raise ValueError(f"Sequence length {seq_len} exceeds max_seq_len {self.max_seq_len}")
@@ -202,7 +211,12 @@ class AMHTModel(nn.Module):
         router_unselected_score_mean = x.new_zeros(())
         router_score_gap = x.new_zeros(())
         for block in self.blocks:
-            x, latent_state, block_stats = block(x, latent_state, memory_io=shared_memory)
+            x, latent_state, block_stats = block(
+                x,
+                latent_state,
+                memory_io=shared_memory,
+                router_straight_through_enabled=router_straight_through_enabled,
+            )
             router_mean = router_mean + block_stats["router_mean"]
             router_selected_ratio = router_selected_ratio + block_stats["router_selected_ratio"]
             router_selected_score_mean = router_selected_score_mean + block_stats["router_selected_score_mean"]
@@ -234,16 +248,20 @@ def compute_loss(
     router_mean_weight: float = 1.0,
     router_score_margin: float = 0.02,
     router_score_weight: float = 0.0,
+    router_straight_through_enabled: bool | None = None,
 ) -> LossBreakdown:
+    model_kwargs: dict[str, bool] = {}
+    if router_straight_through_enabled is not None and isinstance(model, AMHTModel):
+        model_kwargs["router_straight_through_enabled"] = router_straight_through_enabled
     if loss_mode == "final_token":
         inputs = tokens[:, :-1]
         targets = tokens[:, -1]
-        logits, stats = model(inputs)
+        logits, stats = model(inputs, **model_kwargs)
         main_loss = F.cross_entropy(logits[:, -1, :], targets)
     else:
         inputs = tokens[:, :-1]
         targets = tokens[:, 1:]
-        logits, stats = model(inputs)
+        logits, stats = model(inputs, **model_kwargs)
         main_loss = F.cross_entropy(logits.reshape(-1, logits.size(-1)), targets.reshape(-1))
     router_mean_penalty = (stats["router_mean"] - float(router_mean_target)).pow(2)
     router_score_penalty = F.relu(float(router_score_margin) - stats["router_score_gap"]).pow(2)

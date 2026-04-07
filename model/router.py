@@ -179,6 +179,8 @@ class SparseRouter(nn.Module):
         x: torch.Tensor,
         recurrent_context: torch.Tensor | None = None,
         latent_context: torch.Tensor | None = None,
+        *,
+        apply_straight_through: bool | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, dict[str, torch.Tensor]]:
         batch, seq_len, _ = x.shape
         padded_x, num_blocks, block_size = self._pad_to_blocks(x)
@@ -221,8 +223,9 @@ class SparseRouter(nn.Module):
         expanded = selected.unsqueeze(-1).expand(-1, -1, block_size).reshape(batch, num_blocks * block_size)
         token_mask = expanded[:, :seq_len]
 
+        use_straight_through = self.straight_through_scores if apply_straight_through is None else bool(apply_straight_through)
         selection_gate = selected.float()
-        if self.straight_through_scores:
+        if use_straight_through:
             threshold = torch.topk(block_scores, k=topk, dim=-1).values[:, -1:].detach()
             soft_selection = torch.sigmoid((block_scores - threshold) / self.straight_through_temperature)
             selection_gate = selection_gate + soft_selection - soft_selection.detach()
@@ -269,6 +272,8 @@ class SparseRouter(nn.Module):
         token_mask: torch.Tensor,
         selected_blocks: torch.Tensor,
         selection_gate: torch.Tensor | None = None,
+        *,
+        apply_straight_through: bool | None = None,
     ) -> torch.Tensor:
         batch, seq_len, dim = x.shape
         block_size = min(self.block_size, seq_len)
@@ -334,7 +339,8 @@ class SparseRouter(nn.Module):
         output_tokens = outputs.view(batch, num_blocks * block_size, dim)[:, :seq_len]
         output_tokens = output_tokens * padded_mask[:, :seq_len].unsqueeze(-1).to(output_tokens.dtype)
 
-        if self.straight_through_scores and selection_gate is not None:
+        use_straight_through = self.straight_through_scores if apply_straight_through is None else bool(apply_straight_through)
+        if use_straight_through and selection_gate is not None:
             gate_tokens = selection_gate.unsqueeze(-1).expand(-1, -1, block_size).reshape(batch, num_blocks * block_size)
             gate_tokens = gate_tokens[:, :seq_len].unsqueeze(-1).to(output_tokens.dtype)
             # Forward pass stays unchanged; backward pass exposes a task-driven signal to router scores.
