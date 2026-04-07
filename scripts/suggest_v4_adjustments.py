@@ -38,6 +38,7 @@ def pick_best_amht(summary: dict) -> str | None:
     candidates = [
         key
         for key in (
+            "amht_v4_stage2_round7",
             "amht_v4_stage2_round6",
             "amht_v4_stage2_round5",
             "amht_v4_stage2_round4",
@@ -57,9 +58,14 @@ def pick_best_amht(summary: dict) -> str | None:
         return None
 
     def score(key: str) -> tuple[float, float]:
+        state = metric(summary, key, "state_tracking", "mean_accuracy")
         niah = metric(summary, key, "niah", "mean_accuracy")
         tps = metric(summary, key, "throughput", "tokens_per_second")
-        return (niah if niah is not None else -1.0, tps if tps is not None else -1.0)
+        return (
+            niah if niah is not None else -1.0,
+            state if state is not None else -1.0,
+            tps if tps is not None else -1.0,
+        )
 
     return max(candidates, key=score)
 
@@ -75,6 +81,7 @@ def build_note(summary: dict) -> str:
             (
                 key
                 for key in (
+                    "transformer_v4_stage2_round7_baseline",
                     "transformer_v4_stage2_round4_baseline",
                     "transformer_v4_stage2_baseline",
                 )
@@ -86,6 +93,7 @@ def build_note(summary: dict) -> str:
             (
                 key
                 for key in (
+                    "mamba3_hybrid_v4_stage2_round7_baseline",
                     "mamba3_hybrid_v4_stage2_round4_baseline",
                     "mamba3_hybrid_v4_stage2_baseline",
                 )
@@ -115,6 +123,7 @@ def build_note(summary: dict) -> str:
 
     best_label = models[best_amht]["label"]
     best_acc = metric(summary, best_amht, "niah", "mean_accuracy")
+    best_state_acc = metric(summary, best_amht, "state_tracking", "mean_accuracy")
     best_tps = metric(summary, best_amht, "throughput", "tokens_per_second")
     best_loss = metric(summary, best_amht, "train", "final_total_loss")
     best_router_loss = metric(summary, best_amht, "train", "final_router_loss")
@@ -132,6 +141,7 @@ def build_note(summary: dict) -> str:
             "",
             f"- Model: `{best_label}`",
             f"- Mean NIAH accuracy: `{fmt(best_acc)}`",
+            f"- Mean state-tracking accuracy: `{fmt(best_state_acc)}`",
             f"- Throughput (tok/s): `{fmt(best_tps, 2)}`",
             f"- Final train loss: `{fmt(best_loss)}`",
             f"- Final router loss: `{fmt(best_router_loss)}`",
@@ -148,8 +158,10 @@ def build_note(summary: dict) -> str:
         if target_key not in models:
             return []
         target_acc = metric(summary, target_key, "niah", "mean_accuracy")
+        target_state_acc = metric(summary, target_key, "state_tracking", "mean_accuracy")
         target_tps = metric(summary, target_key, "throughput", "tokens_per_second")
         acc_gap = None if best_acc is None or target_acc is None else best_acc - target_acc
+        state_gap = None if best_state_acc is None or target_state_acc is None else best_state_acc - target_state_acc
         tps_gap = None if best_tps is None or target_tps is None else best_tps - target_tps
         comparison_gaps.append((acc_gap, tps_gap))
 
@@ -157,13 +169,31 @@ def build_note(summary: dict) -> str:
             f"## AMHT vs {target_title}",
             "",
             f"- Baseline mean NIAH accuracy: `{fmt(target_acc)}`",
+            f"- Baseline mean state-tracking accuracy: `{fmt(target_state_acc)}`",
             f"- Baseline throughput (tok/s): `{fmt(target_tps, 2)}`",
             f"- Accuracy gap (AMHT - baseline): `{fmt(acc_gap)}`",
+            f"- State-tracking gap (AMHT - baseline): `{fmt(state_gap)}`",
             f"- Throughput gap (AMHT - baseline): `{fmt(tps_gap, 2)}`",
             "",
         ]
 
-        if router_score_collapsed and acc_gap is not None and acc_gap >= 0.0 and tps_gap is not None and tps_gap > 0.0:
+        if (
+            state_gap is not None
+            and state_gap >= 0.03
+            and acc_gap is not None
+            and acc_gap >= -quality_tie_tolerance
+            and tps_gap is not None
+            and tps_gap > 0.0
+        ):
+            block.extend(
+                [
+                    "Recommendation:",
+                    "- This is the intended AMHT outcome: a clear win on the state-sensitive task while retrieval stays competitive.",
+                    "- Freeze router and memory knobs, validate with extra seeds, and only then move to `16K/32K` continuation.",
+                    "",
+                ]
+            )
+        elif router_score_collapsed and acc_gap is not None and acc_gap >= 0.0 and tps_gap is not None and tps_gap > 0.0:
             block.extend(
                 [
                     "Recommendation:",
@@ -190,8 +220,8 @@ def build_note(summary: dict) -> str:
                     "Recommendation:",
                     *(
                         [
-                            "- Hybrid specialization is the first suspect. Keep the round-four backbone fixed and tune `router_neighbor_radius`, `router_neighbor_bonus`, `latent_tokens`, or memory I/O first.",
-                            "- Re-open backbone changes only if the harder retrieval setting still misses quality after at least one router or memory iteration.",
+                            "- Quality is still short of target. Keep the round-four router and memory settings fixed and use the state-tracking benchmark as the next gate.",
+                            "- Re-open only backbone capacity if AMHT still cannot recover quality without breaking the mixed-task tradeoff.",
                         ]
                         if stage_label == "2"
                         else [
@@ -204,12 +234,26 @@ def build_note(summary: dict) -> str:
                     "",
                 ]
             )
+        elif (
+            state_gap is not None
+            and state_gap < 0.03
+            and acc_gap is not None
+            and acc_gap >= -quality_tie_tolerance
+        ):
+            block.extend(
+                [
+                    "Recommendation:",
+                    "- Retrieval is holding, but AMHT still lacks the intended state-tracking separation. Keep router and memory knobs frozen.",
+                    "- Re-open only backbone capacity next: test `ssm_state_size` first, then `ssm_conv_kernel` if needed.",
+                    "",
+                ]
+            )
         elif tps_gap is not None and tps_gap < 0.0 and (acc_gap is None or acc_gap <= quality_tie_tolerance):
             block.extend(
                 [
                     "Recommendation:",
-                    "- Throughput is losing without a clear quality win. Reduce selective-attention cost first: lower `router_neighbor_radius` or `router_neighbor_bonus`, or increase `block_size`.",
-                    "- If memory is heavy, reduce `latent_tokens` before weakening the recurrent backbone.",
+                    "- Throughput is losing without a clear quality win. Do not reopen router-neighbor tuning; it does not reduce top-k compute in the current implementation.",
+                    "- Keep the round-four/router settings fixed and either stop here or test a backbone-neutral efficiency change that preserves the routed budget.",
                     "",
                 ]
             )
@@ -226,8 +270,8 @@ def build_note(summary: dict) -> str:
             block.extend(
                 [
                     "Recommendation:",
-                    "- Mixed result. Keep the backbone fixed and test longer training or memory/context changes next: `latent_tokens`, `router_neighbor_radius`, `router_neighbor_bonus`, or memory I/O.",
-                    "- Do not retune straight-through router settings unless `router_score_gap` falls back below the margin.",
+                    "- Mixed result. Keep the backbone fixed and use the state-tracking benchmark as the next decision gate.",
+                    "- Do not retune router-neighbor, margin, or latent-token settings before the recurrent benchmark clearly separates.",
                     "",
                 ]
             )
@@ -283,10 +327,10 @@ def build_note(summary: dict) -> str:
     elif throughput_deficit:
         lines.extend(
             [
-                "1. Reduce selective-attention or memory overhead before changing the backbone again.",
-                "2. Re-run the same baseline comparison at the same sequence length and steps.",
-                "3. Tune router score separation only after throughput recovers or if quality still stalls.",
-                "4. Return to backbone changes only if efficiency tuning fails to recover the tradeoff.",
+                "1. Keep the round-four router and memory settings frozen.",
+                "2. Re-run the same comparison with the new state-tracking benchmark enabled.",
+                "3. Change the backbone only if AMHT still lacks a clear state-sensitive advantage.",
+                "4. Delay efficiency tuning until the recurrent-thesis benchmark is proven.",
                 "",
             ]
         )
@@ -337,10 +381,10 @@ def build_note(summary: dict) -> str:
             [
                 *(
                     [
-                        "1. Keep the round-four backbone fixed and tune router or memory specialization first.",
-                        "2. Re-run the same harder retrieval comparison.",
-                        "3. Add longer-context or held-out retrieval only after hybrid gains stop moving.",
-                        "4. Re-open backbone changes only if stage-two tuning fails to improve the tradeoff.",
+                        "1. Keep the round-four router and memory settings fixed.",
+                        "2. Use mixed retrieval plus state-tracking training as the next gate.",
+                        "3. Re-open only backbone capacity if AMHT fails to clear a state-tracking win.",
+                        "4. Move to longer-context freezing only after state-tracking and retrieval both hold.",
                     ]
                     if stage_label == "2"
                     else [

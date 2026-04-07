@@ -25,7 +25,7 @@ except ImportError as exc:  # pragma: no cover
 
 import yaml
 
-from data.dataset import RetrievalDataset, SyntheticDataset
+from data.dataset import MixedDataset, RetrievalDataset, StateTrackingDataset, SyntheticDataset
 from model.amht import AMHTModel, compute_loss
 from model.mamba3_hybrid import Mamba3HybridModel
 from model.transformer import LocalTransformerModel
@@ -76,6 +76,93 @@ def build_model(cfg: dict) -> nn.Module:
 
 def model_name(cfg: dict) -> str:
     return str(cfg["model"].get("architecture", "amht")).lower()
+
+
+def build_retrieval_dataset(
+    cfg: dict,
+    seq_len: int,
+    total_samples: int,
+    *,
+    seed: int | None = None,
+) -> RetrievalDataset:
+    data_cfg = cfg.get("data", {})
+    niah_cfg = cfg["evaluation"]["niah"]
+    retrieval_cfg = dict(niah_cfg)
+    retrieval_cfg.update(data_cfg.get("retrieval", {}))
+    return RetrievalDataset(
+        vocab_size=int(cfg["model"]["vocab_size"]),
+        seq_len=seq_len,
+        total_samples=total_samples,
+        pad_token=int(retrieval_cfg["pad_token"]),
+        key_start=int(retrieval_cfg["key_start"]),
+        value_start=int(retrieval_cfg["value_start"]),
+        num_pairs=int(retrieval_cfg["num_pairs"]),
+        num_keys=int(retrieval_cfg.get("num_keys", retrieval_cfg["num_pairs"])),
+        depth_choices=[
+            float(depth)
+            for depth in retrieval_cfg.get(
+                "depth_choices",
+                retrieval_cfg.get("needle_depths", [0.1, 0.3, 0.5, 0.7, 0.9]),
+            )
+        ],
+        seed=seed,
+    )
+
+
+def build_state_tracking_dataset(
+    cfg: dict,
+    seq_len: int,
+    total_samples: int,
+    *,
+    seed: int | None = None,
+) -> StateTrackingDataset:
+    state_cfg = cfg.get("data", {}).get("state_tracking", {})
+    return StateTrackingDataset(
+        vocab_size=int(cfg["model"]["vocab_size"]),
+        seq_len=seq_len,
+        total_samples=total_samples,
+        task=str(state_cfg.get("task", "modsum")),
+        modulus=int(state_cfg.get("modulus", 16)),
+        digit_start=int(state_cfg.get("digit_start", 0)),
+        seed=seed,
+    )
+
+
+def build_dataset(
+    cfg: dict,
+    seq_len: int,
+    total_samples: int,
+    *,
+    seed: int,
+):
+    data_cfg = cfg.get("data", {})
+    dataset_type = str(data_cfg.get("dataset_type", "synthetic")).lower()
+    if dataset_type == "retrieval":
+        # Keep retrieval-only training aligned with the historical stage-two setup.
+        return build_retrieval_dataset(cfg, seq_len, total_samples)
+    if dataset_type == "state_tracking":
+        return build_state_tracking_dataset(cfg, seq_len, total_samples, seed=seed)
+    if dataset_type == "mixed":
+        mixture_cfg = data_cfg.get("mixture", {})
+        retrieval_weight = float(mixture_cfg.get("retrieval_weight", 0.0))
+        state_tracking_weight = float(mixture_cfg.get("state_tracking_weight", 0.0))
+        datasets = {}
+        weights = {}
+        if retrieval_weight > 0.0:
+            datasets["retrieval"] = build_retrieval_dataset(cfg, seq_len, total_samples, seed=seed)
+            weights["retrieval"] = retrieval_weight
+        if state_tracking_weight > 0.0:
+            datasets["state_tracking"] = build_state_tracking_dataset(cfg, seq_len, total_samples, seed=seed + 10_000_000)
+            weights["state_tracking"] = state_tracking_weight
+        return MixedDataset(datasets, weights, total_samples=total_samples, seed=seed)
+    if dataset_type == "synthetic":
+        return SyntheticDataset(
+            vocab_size=int(cfg["model"]["vocab_size"]),
+            seq_len=seq_len,
+            total_samples=total_samples,
+            seed=seed,
+        )
+    raise SystemExit(f"Unsupported data.dataset_type={dataset_type}")
 
 
 def parse_args() -> argparse.Namespace:
@@ -134,36 +221,8 @@ def train() -> None:
         print(f"resumed_from={args.resume}")
         print(f"resume_step={start_step}")
 
-    data_cfg = cfg.get("data", {})
-    dataset_type = data_cfg.get("dataset_type", "synthetic")
     total_samples = (start_step + total_steps) * int(train_cfg["batch_size"])
-    if dataset_type == "retrieval":
-        niah_cfg = cfg["evaluation"]["niah"]
-        retrieval_cfg = dict(niah_cfg)
-        retrieval_cfg.update(data_cfg.get("retrieval", {}))
-        dataset = RetrievalDataset(
-            vocab_size=int(cfg["model"]["vocab_size"]),
-            seq_len=args.seq_len,
-            total_samples=total_samples,
-            pad_token=int(retrieval_cfg["pad_token"]),
-            key_start=int(retrieval_cfg["key_start"]),
-            value_start=int(retrieval_cfg["value_start"]),
-            num_pairs=int(retrieval_cfg["num_pairs"]),
-            num_keys=int(retrieval_cfg.get("num_keys", retrieval_cfg["num_pairs"])),
-            depth_choices=[
-                float(depth)
-                for depth in retrieval_cfg.get(
-                    "depth_choices",
-                    retrieval_cfg.get("needle_depths", [0.1, 0.3, 0.5, 0.7, 0.9]),
-                )
-            ],
-        )
-    else:
-        dataset = SyntheticDataset(
-            vocab_size=int(cfg["model"]["vocab_size"]),
-            seq_len=args.seq_len,
-            total_samples=total_samples,
-        )
+    dataset = build_dataset(cfg, args.seq_len, total_samples, seed=seed)
 
     model.train()
     started = time.perf_counter()

@@ -25,6 +25,7 @@ import yaml
 
 from eval.niah import benchmark_niah
 from eval.scaling import benchmark_scaling
+from eval.state_tracking import benchmark_state_tracking
 from model.amht import AMHTModel, synthetic_batch
 from model.mamba3_hybrid import Mamba3HybridModel
 from model.transformer import LocalTransformerModel
@@ -93,7 +94,7 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Optional checkpoint path. If omitted, load from AMHT_CHECKPOINT_DIR or training.checkpoint_dir.",
     )
-    parser.add_argument("--task", default="throughput", choices=["throughput", "niah", "scaling", "all"])
+    parser.add_argument("--task", default="throughput", choices=["throughput", "niah", "state_tracking", "scaling", "all"])
     parser.add_argument("--seq-len", type=int, default=8192, help="Primary context length")
     parser.add_argument("--niah-seq-len", type=int, default=None, help="Optional override for evaluation.niah.seq_len")
     parser.add_argument("--niah-batch-size", type=int, default=None, help="Optional override for evaluation.niah.batch_size")
@@ -164,6 +165,20 @@ def main() -> None:
         raise SystemExit(
             f"NIAH seq_len {niah_seq_len} exceeds config model.max_seq_len={cfg['model']['max_seq_len']}"
         )
+    state_tracking_default_lengths = [
+        length for length in [1024, 4096, 8192, 16384, 32768] if length <= cfg["model"]["max_seq_len"]
+    ]
+    state_tracking_lengths = [
+        int(seq_len)
+        for seq_len in cfg.get("evaluation", {}).get("state_tracking", {}).get("seq_lens", state_tracking_default_lengths)
+    ]
+    if state_tracking_lengths:
+        max_state_tracking_seq_len = max(state_tracking_lengths)
+        if max_state_tracking_seq_len > cfg["model"]["max_seq_len"]:
+            raise SystemExit(
+                "State-tracking seq_len "
+                f"{max_state_tracking_seq_len} exceeds config model.max_seq_len={cfg['model']['max_seq_len']}"
+            )
 
     seed = int(args.seed if args.seed is not None else cfg.get("seed", 42))
     set_seed(seed)
@@ -187,6 +202,8 @@ def main() -> None:
         outputs.append(benchmark_throughput(model, cfg, args.seq_len, device))
     if args.task in {"niah", "all"}:
         outputs.append(benchmark_niah(model, cfg, device))
+    if args.task in {"state_tracking", "all"}:
+        outputs.append(benchmark_state_tracking(model, cfg, device))
     if args.task in {"scaling", "all"}:
         outputs.append(benchmark_scaling(model, cfg, device, benchmark_throughput))
 

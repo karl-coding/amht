@@ -34,6 +34,13 @@ class ModelSpec:
 
 
 MODEL_SPECS = {
+    "amht_v4_stage2_round7": ModelSpec(
+        key="amht_v4_stage2_round7",
+        label="AMHT-V4-Stage2-R7",
+        config="train/config_amht_v4_stage2_round7.yaml",
+        color="#fb923c",
+        marker="v",
+    ),
     "amht_v4_stage2_round6": ModelSpec(
         key="amht_v4_stage2_round6",
         label="AMHT-V4-Stage2-R6",
@@ -139,6 +146,13 @@ MODEL_SPECS = {
         color="#f67280",
         marker="s",
     ),
+    "transformer_v4_stage2_round7_baseline": ModelSpec(
+        key="transformer_v4_stage2_round7_baseline",
+        label="Transformer",
+        config="train/config_transformer_v4_stage2_round7_baseline.yaml",
+        color="#f67280",
+        marker="s",
+    ),
     "mamba3_hybrid_baseline": ModelSpec(
         key="mamba3_hybrid_baseline",
         label="Mamba-3-Inspired Hybrid",
@@ -160,10 +174,45 @@ MODEL_SPECS = {
         color="#2a9d8f",
         marker="D",
     ),
+    "mamba3_hybrid_v4_stage2_round7_baseline": ModelSpec(
+        key="mamba3_hybrid_v4_stage2_round7_baseline",
+        label="Mamba-3-Inspired Hybrid",
+        config="train/config_mamba3_hybrid_v4_stage2_round7_baseline.yaml",
+        color="#2a9d8f",
+        marker="D",
+    ),
 }
 
 
 PRESETS = {
+    "stage2_round7_validate": {
+        "models": [
+            "amht_v4_stage2_round7",
+            "transformer_v4_stage2_round7_baseline",
+            "mamba3_hybrid_v4_stage2_round7_baseline",
+        ],
+        "seeds": [42, 43, 44],
+        "seq_len": 16384,
+        "steps_scale": 2.0,
+        "warmup_steps": 1,
+        "benchmark_steps": 2,
+        "eval_task": "all",
+        "niah_seq_len": 16384,
+    },
+    "stage2_round7": {
+        "models": [
+            "amht_v4_stage2_round7",
+            "transformer_v4_stage2_round7_baseline",
+            "mamba3_hybrid_v4_stage2_round7_baseline",
+        ],
+        "seeds": [42],
+        "seq_len": 16384,
+        "steps_scale": 2.0,
+        "warmup_steps": 1,
+        "benchmark_steps": 2,
+        "eval_task": "all",
+        "niah_seq_len": 16384,
+    },
     "stage2_round6": {
         "models": [
             "amht_v4_stage2_round6",
@@ -337,7 +386,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--warmup-steps", type=int, default=None, help="Optional override for evaluation warmup steps")
     parser.add_argument("--benchmark-steps", type=int, default=None, help="Optional override for evaluation benchmark steps")
-    parser.add_argument("--eval-task", default=None, choices=["throughput", "niah", "scaling", "all"], help="Benchmark task override")
+    parser.add_argument(
+        "--eval-task",
+        default=None,
+        choices=["throughput", "niah", "state_tracking", "scaling", "all"],
+        help="Benchmark task override",
+    )
     parser.add_argument("--skip-train", action="store_true")
     parser.add_argument("--skip-eval", action="store_true")
     parser.add_argument("--skip-report", action="store_true")
@@ -467,6 +521,15 @@ def collect_niah_depth(model_runs: list[dict], depth_index: int) -> list[float]:
     return values
 
 
+def collect_state_tracking_seq_len(model_runs: list[dict], seq_len: int) -> list[float]:
+    values: list[float] = []
+    for run in model_runs:
+        for item in run.get("eval", {}).get("state_tracking", {}).get("results", []):
+            if int(item.get("seq_len", -1)) == seq_len and isinstance(item.get("accuracy"), (int, float)):
+                values.append(float(item["accuracy"]))
+    return values
+
+
 def niah_run_counts(run: dict) -> tuple[int | None, int | None]:
     item = run.get("eval", {}).get("niah", {})
     batch_size = item.get("batch_size")
@@ -522,6 +585,14 @@ def build_summary(
         model_runs = runs_by_model[key]
         niah_hits_by_seed: list[float] = []
         niah_cases_by_seed: list[int] = []
+        state_tracking_seq_lens = sorted(
+            {
+                int(item["seq_len"])
+                for run in model_runs
+                for item in run.get("eval", {}).get("state_tracking", {}).get("results", [])
+                if "seq_len" in item
+            }
+        )
         for run in model_runs:
             hits, cases = niah_run_counts(run)
             if hits is not None and cases is not None:
@@ -592,6 +663,19 @@ def build_summary(
                 "aggregate_hits": int(sum(int(hits) for hits in niah_hits_by_seed)),
                 "aggregate_cases": int(sum(niah_cases_by_seed)),
             },
+            "state_tracking": {
+                "mean_accuracy": {
+                    "mean": mean_std(collect_eval_metric(model_runs, "state_tracking", "mean_accuracy"))[0],
+                    "std": mean_std(collect_eval_metric(model_runs, "state_tracking", "mean_accuracy"))[1],
+                },
+                "accuracy_by_seq_len": {
+                    str(seq_len): {
+                        "mean": mean_std(collect_state_tracking_seq_len(model_runs, seq_len))[0],
+                        "std": mean_std(collect_state_tracking_seq_len(model_runs, seq_len))[1],
+                    }
+                    for seq_len in state_tracking_seq_lens
+                },
+            },
         }
 
     depths = []
@@ -609,6 +693,15 @@ def build_summary(
                 primary_seq_len = candidate_primary_seq_len
             if depths:
                 break
+
+    state_tracking_seq_lens = sorted(
+        {
+            int(seq_len)
+            for key in model_keys
+            for run in runs_by_model[key]
+            for seq_len in run.get("eval", {}).get("state_tracking", {}).get("seq_lens", [])
+        }
+    )
 
     scaling_lengths = sorted(
         {
@@ -629,6 +722,7 @@ def build_summary(
         "benchmark_steps": benchmark_steps,
         "primary_seq_len": primary_seq_len,
         "niah_seq_len": niah_seq_len,
+        "state_tracking_seq_lens": state_tracking_seq_lens,
         "scaling_lengths": scaling_lengths,
     }
 
@@ -640,6 +734,7 @@ def write_summary_markdown(
     run_dir: Path,
 ) -> None:
     primary_seq_len = summary.get("primary_seq_len")
+    state_tracking_seq_lens = [int(seq_len) for seq_len in summary.get("state_tracking_seq_lens", [])]
     primary_throughput_label = "Primary throughput benchmark (tok/s)"
     primary_latency_label = "Primary throughput latency (ms/step)"
     if primary_seq_len is not None:
@@ -657,8 +752,8 @@ def write_summary_markdown(
         + primary_throughput_label
         + " | "
         + primary_latency_label
-        + " | Mean NIAH accuracy | NIAH hits |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        + " | Mean NIAH accuracy | Mean state accuracy | NIAH hits |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     metadata_lines: list[str] = []
     metadata_lines.append(f"- Seeds: `{summary.get('seed_count', 0)}`")
@@ -671,6 +766,11 @@ def write_summary_markdown(
     if summary.get("niah_seq_len") is not None:
         metadata_lines.append(f"- NIAH seq_len: `{summary['niah_seq_len']}`")
     metadata_lines.append("- NIAH hits aggregate exact correct retrievals across all depths and all seeds.")
+    if state_tracking_seq_lens:
+        metadata_lines.append(
+            "- State-tracking metric: the eval bundle's `state_tracking` section, using modulo-sum final-token accuracy."
+        )
+        metadata_lines.append(f"- State-tracking seq_lens: `{state_tracking_seq_lens}`")
     if metadata_lines:
         lines[4:4] = metadata_lines + [""]
     for key in model_keys:
@@ -687,11 +787,29 @@ def write_summary_markdown(
                     fmt_plain(model["throughput"]["tokens_per_second"]["mean"], model["throughput"]["tokens_per_second"]["std"]),
                     fmt_plain(model["throughput"]["milliseconds_per_step"]["mean"], model["throughput"]["milliseconds_per_step"]["std"]),
                     fmt_plain(model["niah"]["mean_accuracy"]["mean"], model["niah"]["mean_accuracy"]["std"]),
+                    fmt_plain(model["state_tracking"]["mean_accuracy"]["mean"], model["state_tracking"]["mean_accuracy"]["std"]),
                     f"{model['niah']['aggregate_hits']} / {model['niah']['aggregate_cases']}",
                 ]
             )
             + " |"
         )
+
+    if state_tracking_seq_lens:
+        lines.extend(
+            [
+                "",
+                "## State Tracking By Sequence Length",
+                "",
+                "| Seq Len | " + " | ".join(summary["models"][key]["label"] for key in model_keys) + " |",
+                "| --- | " + " | ".join("---" for _ in model_keys) + " |",
+            ]
+        )
+        for seq_len in state_tracking_seq_lens:
+            row = [str(seq_len)]
+            for key in model_keys:
+                pair = summary["models"][key]["state_tracking"]["accuracy_by_seq_len"].get(str(seq_len), {})
+                row.append(fmt_plain(pair.get("mean"), pair.get("std")))
+            lines.append("| " + " | ".join(row) + " |")
 
     lines.extend(
         [
@@ -709,6 +827,7 @@ def write_summary_markdown(
 def write_latex_tables(out_path: Path, summary: dict, runs_by_model: dict[str, list[dict]], model_keys: list[str]) -> None:
     main_rows = []
     primary_seq_len = summary.get("primary_seq_len")
+    state_tracking_seq_lens = [int(seq_len) for seq_len in summary.get("state_tracking_seq_lens", [])]
     throughput_header = "Primary Throughput"
     latency_header = "Primary Latency"
     if primary_seq_len is not None:
@@ -723,6 +842,7 @@ def write_latex_tables(out_path: Path, summary: dict, runs_by_model: dict[str, l
                 fmt(model["throughput"]["tokens_per_second"]["mean"], model["throughput"]["tokens_per_second"]["std"]),
                 fmt(model["throughput"]["milliseconds_per_step"]["mean"], model["throughput"]["milliseconds_per_step"]["std"]),
                 fmt(model["niah"]["mean_accuracy"]["mean"], model["niah"]["mean_accuracy"]["std"]),
+                fmt(model["state_tracking"]["mean_accuracy"]["mean"], model["state_tracking"]["mean_accuracy"]["std"]),
                 f"{model['niah']['aggregate_hits']} / {model['niah']['aggregate_cases']}",
             ]
         )
@@ -732,7 +852,7 @@ def write_latex_tables(out_path: Path, summary: dict, runs_by_model: dict[str, l
         "",
         "% Main comparison",
         latex_table(
-            ["Model", "Train Loss", throughput_header, latency_header, "Mean NIAH", "NIAH Hits"],
+            ["Model", "Train Loss", throughput_header, latency_header, "Mean NIAH", "Mean State", "NIAH Hits"],
             main_rows,
         ),
     ]
@@ -771,6 +891,22 @@ def write_latex_tables(out_path: Path, summary: dict, runs_by_model: dict[str, l
             ]
         )
 
+    if state_tracking_seq_lens:
+        state_rows = []
+        for seq_len in state_tracking_seq_lens:
+            row = [str(seq_len)]
+            for key in model_keys:
+                pair = mean_std(collect_state_tracking_seq_len(runs_by_model[key], seq_len))
+                row.append(fmt(*pair))
+            state_rows.append(row)
+        sections.extend(
+            [
+                "",
+                "% State tracking by sequence length",
+                latex_table(["Seq Len"] + [MODEL_SPECS[key].label for key in model_keys], state_rows),
+            ]
+        )
+
     out_path.write_text("\n\n".join(sections) + "\n", encoding="utf-8")
 
 
@@ -795,7 +931,9 @@ def generate_figures(figures_dir: Path, runs_by_model: dict[str, list[dict]], mo
 
     figures_dir.mkdir(parents=True, exist_ok=True)
 
-    first_key = model_keys[0]
+    first_key = next((key for key in model_keys if runs_by_model[key]), None)
+    if first_key is None:
+        return
     depths = list(runs_by_model[first_key][0].get("eval", {}).get("niah", {}).get("needle_depths", []))
     if depths:
         x = np.arange(len(depths))
@@ -852,6 +990,41 @@ def generate_figures(figures_dir: Path, runs_by_model: dict[str, list[dict]], mo
         ax.legend(frameon=False)
         fig.tight_layout()
         fig.savefig(figures_dir / "throughput_scaling.pdf", bbox_inches="tight")
+        plt.close(fig)
+
+    state_tracking_seq_lens = sorted(
+        {
+            int(item["seq_len"])
+            for key in model_keys
+            for run in runs_by_model[key]
+            for item in run.get("eval", {}).get("state_tracking", {}).get("results", [])
+            if "seq_len" in item
+        }
+    )
+    if state_tracking_seq_lens:
+        fig, ax = plt.subplots(figsize=(8.4, 4.8))
+        for key in model_keys:
+            means, stds = [], []
+            for seq_len in state_tracking_seq_lens:
+                mean, std = mean_std(collect_state_tracking_seq_len(runs_by_model[key], seq_len))
+                means.append(np.nan if mean is None else mean)
+                stds.append(0.0 if std is None else std)
+            ax.errorbar(
+                state_tracking_seq_lens,
+                means,
+                yerr=stds,
+                marker=MODEL_SPECS[key].marker,
+                linewidth=2,
+                color=MODEL_SPECS[key].color,
+                label=MODEL_SPECS[key].label,
+            )
+        ax.set_xlabel("Sequence length")
+        ax.set_ylabel("Accuracy")
+        ax.set_title("State Tracking Accuracy by Sequence Length")
+        ax.set_ylim(0.0, 1.05)
+        ax.legend(frameon=False)
+        fig.tight_layout()
+        fig.savefig(figures_dir / "state_tracking_by_seq_len.pdf", bbox_inches="tight")
         plt.close(fig)
 
     if all(collect_eval_metric(runs_by_model[key], "throughput", "tokens_per_second") for key in model_keys):
