@@ -133,6 +133,37 @@ class SuggestV4AdjustmentsTests(unittest.TestCase):
         self.assertIn("Run `stage2_round13_validate` next", note)
         self.assertIn("Run `stage2_round13_validate` to verify the long-budget result across seeds.", note)
 
+    def test_round13_validation_note_moves_to_harder_evaluation(self) -> None:
+        summary = {
+            "models": {
+                "amht_v4_stage2_round13": {
+                    "label": "AMHT-V4-Stage2-R13",
+                    "niah": {"mean_accuracy": {"mean": 0.9732, "std": 0.01}},
+                    "state_tracking": {"mean_accuracy": {"mean": 0.5292, "std": 0.02}},
+                    "throughput": {"tokens_per_second": {"mean": 296755.59, "std": 1200.0}},
+                },
+                "transformer_v4_stage2_round13_baseline": {
+                    "label": "Transformer",
+                    "niah": {"mean_accuracy": {"mean": 0.9732, "std": 0.01}},
+                    "state_tracking": {"mean_accuracy": {"mean": 0.5354, "std": 0.08}},
+                    "throughput": {"tokens_per_second": {"mean": 330441.67, "std": 5000.0}},
+                },
+                "mamba3_hybrid_v4_stage2_round13_baseline": {
+                    "label": "Mamba",
+                    "niah": {"mean_accuracy": {"mean": 0.9732, "std": 0.01}},
+                    "state_tracking": {"mean_accuracy": {"mean": 0.5292, "std": 0.08}},
+                    "throughput": {"tokens_per_second": {"mean": 235397.81, "std": 2000.0}},
+                },
+            }
+        }
+
+        note = MODULE.build_note(summary)
+
+        self.assertIn("Validation is complete.", note)
+        self.assertNotIn("Run `stage2_round13_validate` next", note)
+        self.assertIn("Freeze `stage2_round13` as the validated AMHT reference.", note)
+        self.assertIn("Stop reading the current `NIAH` setting as the main optimization target; it is saturated across the baselines.", note)
+
 
 if __name__ == "__main__":
     unittest.main()

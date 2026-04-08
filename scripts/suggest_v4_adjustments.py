@@ -28,6 +28,30 @@ def metric(summary: dict, model_key: str, section: str, field: str) -> float | N
     return None
 
 
+def spread(summary: dict, model_key: str, section: str, field: str) -> float | None:
+    value = (
+        summary.get("models", {})
+        .get(model_key, {})
+        .get(section, {})
+        .get(field, {})
+        .get("std")
+    )
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
+
+
+def has_variation(summary: dict, model_key: str) -> bool:
+    return any(
+        (value := spread(summary, model_key, section, field)) is not None and value > 0.0
+        for section, field in (
+            ("niah", "mean_accuracy"),
+            ("state_tracking", "mean_accuracy"),
+            ("throughput", "tokens_per_second"),
+        )
+    )
+
+
 def fmt(value: float | None, digits: int = 4) -> str:
     if value is None:
         return "-"
@@ -110,8 +134,21 @@ def build_note(summary: dict) -> str:
     models = summary.get("models", {})
     best_amht = pick_best_amht(summary)
     quality_tie_tolerance = 0.02
+    round13_validation_complete = any(
+        key in models and has_variation(summary, key)
+        for key in (
+            "amht_v4_stage2_round13",
+            "transformer_v4_stage2_round13_baseline",
+            "mamba3_hybrid_v4_stage2_round13_baseline",
+        )
+    )
     diagnostic_mode = best_amht is not None and "state_tracking_diag" in best_amht
-    validation_mode = best_amht is not None and "stage2_round13" in best_amht
+    validated_stage2_mode = (
+        best_amht is not None and "stage2_round13" in best_amht and round13_validation_complete
+    )
+    validation_mode = (
+        best_amht is not None and "stage2_round13" in best_amht and not round13_validation_complete
+    )
     post_budget_mode = best_amht is not None and "stage2_round10" in best_amht
     stable_mixed_mode = best_amht is not None and any(
         tag in best_amht
@@ -160,6 +197,46 @@ def build_note(summary: dict) -> str:
         )
         intro = "Focus on recurrent-state diagnosis first. Mixed retrieval training should only be retried after the pure state-tracking path is numerically stable."
         favorable_line = "- This diagnostic is favorable: AMHT is stable and already shows a clear state-tracking edge before mixed training is reintroduced."
+    elif validated_stage2_mode:
+        stage_label = "2"
+        transformer = next(
+            (
+                key
+                for key in (
+                    "transformer_v4_stage2_round13_baseline",
+                    "transformer_v4_stage2_round11_state_tracking_diag_baseline",
+                    "transformer_v4_stage2_round11_retry_baseline",
+                    "transformer_v4_stage2_round11_baseline",
+                    "transformer_v4_stage2_round10_baseline",
+                    "transformer_v4_stage2_round7_retry_baseline",
+                    "transformer_v4_stage2_round7_baseline",
+                    "transformer_v4_stage2_round4_baseline",
+                    "transformer_v4_stage2_baseline",
+                )
+                if key in models
+            ),
+            None,
+        )
+        mamba_ref = next(
+            (
+                key
+                for key in (
+                    "mamba3_hybrid_v4_stage2_round13_baseline",
+                    "mamba3_hybrid_v4_stage2_round11_state_tracking_diag_baseline",
+                    "mamba3_hybrid_v4_stage2_round11_retry_baseline",
+                    "mamba3_hybrid_v4_stage2_round11_baseline",
+                    "mamba3_hybrid_v4_stage2_round10_baseline",
+                    "mamba3_hybrid_v4_stage2_round7_retry_baseline",
+                    "mamba3_hybrid_v4_stage2_round7_baseline",
+                    "mamba3_hybrid_v4_stage2_round4_baseline",
+                    "mamba3_hybrid_v4_stage2_baseline",
+                )
+                if key in models
+            ),
+            None,
+        )
+        intro = "Validation is complete. The long-budget stable mix is now reproducible, but the current benchmark still does not show a decisive AMHT win over the baselines."
+        favorable_line = "- The architecture is now validated as competitive, but not yet differentiated enough to justify another architecture axis on this benchmark."
     elif validation_mode:
         stage_label = "2"
         transformer = next(
@@ -314,7 +391,38 @@ def build_note(summary: dict) -> str:
             "",
         ]
 
-        if validation_mode:
+        if validated_stage2_mode:
+            block.extend(
+                [
+                    "Recommendation:",
+                    *(
+                        [
+                            "- Validation says AMHT is at least competitive with this baseline and faster on the current benchmark.",
+                            "- Keep the architecture frozen and move to harder retrieval or longer-context evaluation before reopening tuning.",
+                        ]
+                        if acc_gap is not None
+                        and acc_gap >= -quality_tie_tolerance
+                        and state_gap is not None
+                        and state_gap >= -0.01
+                        and tps_gap is not None
+                        and tps_gap > 0.0
+                        else [
+                            "- Validation says this baseline still holds the stronger overall tradeoff on the current benchmark.",
+                            "- Do not reopen backbone, router, or memory tuning to chase a marginal gap here; move next to harder retrieval or longer-context evaluation where the hybrid design can either separate or be retired.",
+                        ]
+                        if tps_gap is not None
+                        and tps_gap < 0.0
+                        and (state_gap is None or state_gap <= 0.0)
+                        and (acc_gap is None or acc_gap <= quality_tie_tolerance)
+                        else [
+                            "- Validation says AMHT is competitive with this baseline, but the margin is too small to justify more architecture churn on the current benchmark.",
+                            "- Keep the architecture frozen and move to harder retrieval or longer-context evaluation before reopening tuning.",
+                        ]
+                    ),
+                    "",
+                ]
+            )
+        elif validation_mode:
             block.extend(
                 [
                     "Recommendation:",
@@ -490,6 +598,16 @@ def build_note(summary: dict) -> str:
                 "2. If mixed training is stable, compare whether retrieval-aligned training lifts state-tracking above chance.",
                 "3. If all three models remain near chance, increase training budget or simplify the benchmark before reading architecture conclusions from it.",
                 "4. Re-open backbone capacity only after the task is stable and informative.",
+                "",
+            ]
+        )
+    elif validated_stage2_mode:
+        lines.extend(
+            [
+                "1. Freeze `stage2_round13` as the validated AMHT reference.",
+                "2. Stop reading the current `NIAH` setting as the main optimization target; it is saturated across the baselines.",
+                "3. Move next to harder retrieval or longer-context evaluation with the same architecture.",
+                "4. If AMHT still does not show a clear state-sensitive edge there, stop architecture churn and revisit the benchmark or paper framing.",
                 "",
             ]
         )
