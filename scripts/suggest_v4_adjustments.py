@@ -111,6 +111,7 @@ def build_note(summary: dict) -> str:
     best_amht = pick_best_amht(summary)
     quality_tie_tolerance = 0.02
     diagnostic_mode = best_amht is not None and "state_tracking_diag" in best_amht
+    validation_mode = best_amht is not None and "stage2_round13" in best_amht
     post_budget_mode = best_amht is not None and "stage2_round10" in best_amht
     stable_mixed_mode = best_amht is not None and any(
         tag in best_amht
@@ -159,12 +160,13 @@ def build_note(summary: dict) -> str:
         )
         intro = "Focus on recurrent-state diagnosis first. Mixed retrieval training should only be retried after the pure state-tracking path is numerically stable."
         favorable_line = "- This diagnostic is favorable: AMHT is stable and already shows a clear state-tracking edge before mixed training is reintroduced."
-    elif best_amht and "stage2" in best_amht:
+    elif validation_mode:
         stage_label = "2"
         transformer = next(
             (
                 key
                 for key in (
+                    "transformer_v4_stage2_round13_baseline",
                     "transformer_v4_stage2_round11_state_tracking_diag_baseline",
                     "transformer_v4_stage2_round11_retry_baseline",
                     "transformer_v4_stage2_round11_baseline",
@@ -182,6 +184,47 @@ def build_note(summary: dict) -> str:
             (
                 key
                 for key in (
+                    "mamba3_hybrid_v4_stage2_round13_baseline",
+                    "mamba3_hybrid_v4_stage2_round11_state_tracking_diag_baseline",
+                    "mamba3_hybrid_v4_stage2_round11_retry_baseline",
+                    "mamba3_hybrid_v4_stage2_round11_baseline",
+                    "mamba3_hybrid_v4_stage2_round10_baseline",
+                    "mamba3_hybrid_v4_stage2_round7_retry_baseline",
+                    "mamba3_hybrid_v4_stage2_round7_baseline",
+                    "mamba3_hybrid_v4_stage2_round4_baseline",
+                    "mamba3_hybrid_v4_stage2_baseline",
+                )
+                if key in models
+            ),
+            None,
+        )
+        intro = "Focus on validation next. The long-budget stable mix is now the reference, so do not open another architecture axis until the single-seed result survives extra seeds."
+        favorable_line = "- This long-budget run is promising, but it is still a single-seed result and should be validated before more tuning."
+    elif best_amht and "stage2" in best_amht:
+        stage_label = "2"
+        transformer = next(
+            (
+                key
+                for key in (
+                    "transformer_v4_stage2_round13_baseline",
+                    "transformer_v4_stage2_round11_state_tracking_diag_baseline",
+                    "transformer_v4_stage2_round11_retry_baseline",
+                    "transformer_v4_stage2_round11_baseline",
+                    "transformer_v4_stage2_round10_baseline",
+                    "transformer_v4_stage2_round7_retry_baseline",
+                    "transformer_v4_stage2_round7_baseline",
+                    "transformer_v4_stage2_round4_baseline",
+                    "transformer_v4_stage2_baseline",
+                )
+                if key in models
+            ),
+            None,
+        )
+        mamba_ref = next(
+            (
+                key
+                for key in (
+                    "mamba3_hybrid_v4_stage2_round13_baseline",
                     "mamba3_hybrid_v4_stage2_round11_state_tracking_diag_baseline",
                     "mamba3_hybrid_v4_stage2_round11_retry_baseline",
                     "mamba3_hybrid_v4_stage2_round11_baseline",
@@ -271,7 +314,16 @@ def build_note(summary: dict) -> str:
             "",
         ]
 
-        if post_budget_mode:
+        if validation_mode:
+            block.extend(
+                [
+                    "Recommendation:",
+                    "- The long-budget run is informative, but it is still only one seed. Freeze the architecture and validate it before reopening backbone, router, or memory tuning.",
+                    "- Run `stage2_round13_validate` next to check whether the retrieval and state-tracking pattern survives across seeds.",
+                    "",
+                ]
+            )
+        elif post_budget_mode:
             block.extend(
                 [
                     "Recommendation:",
@@ -438,6 +490,16 @@ def build_note(summary: dict) -> str:
                 "2. If mixed training is stable, compare whether retrieval-aligned training lifts state-tracking above chance.",
                 "3. If all three models remain near chance, increase training budget or simplify the benchmark before reading architecture conclusions from it.",
                 "4. Re-open backbone capacity only after the task is stable and informative.",
+                "",
+            ]
+        )
+    elif validation_mode:
+        lines.extend(
+            [
+                "1. Run `stage2_round13_validate` to verify the long-budget result across seeds.",
+                "2. Keep the `stage2_round13` architecture frozen while validating; do not reopen backbone, router, or memory tuning yet.",
+                "3. If the state-tracking pattern does not hold across seeds, stop architecture churn and revisit the training recipe or benchmark.",
+                "4. If the result is reproducible, then decide between efficiency work and longer-context validation.",
                 "",
             ]
         )

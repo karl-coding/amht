@@ -102,6 +102,37 @@ class SuggestV4AdjustmentsTests(unittest.TestCase):
         self.assertIn("Redesign or simplify the state-tracking benchmark so it separates the models above chance at the same budget.", note)
         self.assertNotIn("Re-open only backbone capacity next", note)
 
+    def test_round13_note_includes_baseline_comparisons_and_validation_followup(self) -> None:
+        summary = {
+            "models": {
+                "amht_v4_stage2_round13": {
+                    "label": "AMHT-V4-Stage2-R13",
+                    "niah": {"mean_accuracy": {"mean": 0.9911, "std": 0.0}},
+                    "state_tracking": {"mean_accuracy": {"mean": 0.5250, "std": 0.0}},
+                    "throughput": {"tokens_per_second": {"mean": 296610.64, "std": 0.0}},
+                },
+                "transformer_v4_stage2_round13_baseline": {
+                    "label": "Transformer",
+                    "niah": {"mean_accuracy": {"mean": 0.9850, "std": 0.0}},
+                    "state_tracking": {"mean_accuracy": {"mean": 0.5125, "std": 0.0}},
+                    "throughput": {"tokens_per_second": {"mean": 320271.74, "std": 0.0}},
+                },
+                "mamba3_hybrid_v4_stage2_round13_baseline": {
+                    "label": "Mamba",
+                    "niah": {"mean_accuracy": {"mean": 0.9700, "std": 0.0}},
+                    "state_tracking": {"mean_accuracy": {"mean": 0.5375, "std": 0.0}},
+                    "throughput": {"tokens_per_second": {"mean": 235149.04, "std": 0.0}},
+                },
+            }
+        }
+
+        note = MODULE.build_note(summary)
+
+        self.assertIn("## AMHT vs Transformer", note)
+        self.assertIn("## AMHT vs Mamba-3-Inspired Hybrid", note)
+        self.assertIn("Run `stage2_round13_validate` next", note)
+        self.assertIn("Run `stage2_round13_validate` to verify the long-budget result across seeds.", note)
+
 
 if __name__ == "__main__":
     unittest.main()
