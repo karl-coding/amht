@@ -164,6 +164,37 @@ class SuggestV4AdjustmentsTests(unittest.TestCase):
         self.assertIn("Freeze `stage2_round13` as the validated AMHT reference.", note)
         self.assertIn("Stop reading the current `NIAH` setting as the main optimization target; it is saturated across the baselines.", note)
 
+    def test_round14_note_uses_round14_baselines(self) -> None:
+        summary = {
+            "models": {
+                "amht_v4_stage2_round14": {
+                    "label": "AMHT-V4-Stage2-R14-Hard",
+                    "niah": {"mean_accuracy": {"mean": 0.75, "std": 0.0}},
+                    "state_tracking": {"mean_accuracy": {"mean": 0.56, "std": 0.0}},
+                    "throughput": {"tokens_per_second": {"mean": 250000.0, "std": 0.0}},
+                },
+                "transformer_v4_stage2_round14_baseline": {
+                    "label": "Transformer",
+                    "niah": {"mean_accuracy": {"mean": 0.72, "std": 0.0}},
+                    "state_tracking": {"mean_accuracy": {"mean": 0.52, "std": 0.0}},
+                    "throughput": {"tokens_per_second": {"mean": 300000.0, "std": 0.0}},
+                },
+                "mamba3_hybrid_v4_stage2_round14_baseline": {
+                    "label": "Mamba",
+                    "niah": {"mean_accuracy": {"mean": 0.68, "std": 0.0}},
+                    "state_tracking": {"mean_accuracy": {"mean": 0.50, "std": 0.0}},
+                    "throughput": {"tokens_per_second": {"mean": 220000.0, "std": 0.0}},
+                },
+            }
+        }
+
+        best = MODULE.pick_best_amht(summary)
+        note = MODULE.build_note(summary)
+
+        self.assertEqual(best, "amht_v4_stage2_round14")
+        self.assertIn("## AMHT vs Transformer", note)
+        self.assertIn("## AMHT vs Mamba-3-Inspired Hybrid", note)
+
 
 if __name__ == "__main__":
     unittest.main()
