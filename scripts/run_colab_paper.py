@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from copy import deepcopy
 import json
 import math
 import shutil
@@ -380,7 +381,67 @@ MODEL_SPECS = {
 }
 
 
+def deep_merge_dict(base: dict, overrides: dict) -> dict:
+    merged = deepcopy(base)
+    for key, value in overrides.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = deep_merge_dict(merged[key], value)
+        else:
+            merged[key] = deepcopy(value)
+    return merged
+
+
+def materialize_eval_config(base_config_path: Path, overrides: dict, output_path: Path) -> Path:
+    base_cfg = yaml.safe_load(base_config_path.read_text(encoding="utf-8"))
+    merged_cfg = deep_merge_dict(base_cfg, overrides)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(yaml.safe_dump(merged_cfg, sort_keys=False), encoding="utf-8")
+    return output_path
+
+
 PRESETS = {
+    "stage2_round14_t4_validate": {
+        "models": [
+            "amht_v4_stage2_round14",
+            "transformer_v4_stage2_round14_baseline",
+            "mamba3_hybrid_v4_stage2_round14_baseline",
+        ],
+        "seeds": [42, 43, 44],
+        "seq_len": 16384,
+        "steps_scale": 8.0,
+        "warmup_steps": 1,
+        "benchmark_steps": 1,
+        "eval_task": "all",
+        "niah_seq_len": 32768,
+        "eval_config_overrides": {
+            "evaluation": {
+                "niah": {
+                    "batch_size": 1,
+                },
+            },
+        },
+    },
+    "stage2_round14_t4": {
+        "models": [
+            "amht_v4_stage2_round14",
+            "transformer_v4_stage2_round14_baseline",
+            "mamba3_hybrid_v4_stage2_round14_baseline",
+        ],
+        "seeds": [42],
+        "seq_len": 16384,
+        "steps_scale": 8.0,
+        "warmup_steps": 1,
+        "benchmark_steps": 1,
+        "eval_task": "all",
+        "niah_seq_len": 32768,
+        "eval_config_overrides": {
+            "evaluation": {
+                "niah": {
+                    "batch_size": 1,
+                },
+            },
+        },
+    },
     "stage2_round14_validate": {
         "models": [
             "amht_v4_stage2_round14",
@@ -1611,6 +1672,7 @@ def main() -> None:
     benchmark_steps = args.benchmark_steps if args.benchmark_steps is not None else int(preset["benchmark_steps"])
     eval_task = args.eval_task if args.eval_task is not None else str(preset["eval_task"])
     niah_seq_len = args.niah_seq_len if args.niah_seq_len is not None else preset.get("niah_seq_len")
+    eval_config_overrides = preset.get("eval_config_overrides")
 
     outdir = Path(args.outdir) if args.outdir else ROOT / "paper_runs" / args.preset
     runs_dir = outdir / "runs"
@@ -1631,6 +1693,7 @@ def main() -> None:
         "benchmark_steps": benchmark_steps,
         "eval_task": eval_task,
         "niah_seq_len": niah_seq_len,
+        "eval_config_overrides": eval_config_overrides,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "python": sys.executable,
     }
@@ -1670,11 +1733,19 @@ def main() -> None:
                     run_command(train_cmd)
 
                 if not args.skip_eval and (args.force or not eval_json_path.exists()):
+                    eval_config_ref = spec.config
+                    if eval_config_overrides:
+                        eval_config_path = materialize_eval_config(
+                            config_path,
+                            eval_config_overrides,
+                            run_dir / "eval_config.yaml",
+                        )
+                        eval_config_ref = str(eval_config_path)
                     eval_cmd = [
                         sys.executable,
                         "eval/benchmark.py",
                         "--config",
-                        spec.config,
+                        eval_config_ref,
                         "--checkpoint",
                         str(checkpoint_path),
                         "--task",
