@@ -241,6 +241,10 @@ def parameters_are_finite(model: nn.Module) -> bool:
     return True
 
 
+def should_skip_non_finite_batch(train_cfg: dict, skipped_batches: int) -> bool:
+    return skipped_batches < int(train_cfg.get("max_non_finite_batches", 0))
+
+
 def train() -> None:
     args = parse_args()
     cfg = load_config(args.config)
@@ -290,6 +294,7 @@ def train() -> None:
 
     model.train()
     started = time.perf_counter()
+    skipped_non_finite_batches = 0
     for step in range(start_step + 1, start_step + total_steps + 1):
         start = (step - 1) * int(train_cfg["batch_size"])
         stop = step * int(train_cfg["batch_size"])
@@ -354,6 +359,7 @@ def train() -> None:
             "effective_router_straight_through_enabled": router_straight_through_enabled,
             "effective_router_attention_enabled": router_attention_enabled,
             "effective_memory_enabled": memory_enabled,
+            "skipped_non_finite_batches": skipped_non_finite_batches,
             "status": "ok",
         }
         if batch_sources:
@@ -362,6 +368,13 @@ def train() -> None:
             metrics["status"] = "non_finite_loss"
             with log_path.open("a", encoding="utf-8") as handle:
                 handle.write(json.dumps(metrics) + "\n")
+            if should_skip_non_finite_batch(train_cfg, skipped_non_finite_batches):
+                skipped_non_finite_batches += 1
+                print(
+                    f"warning=non_finite_loss step={step} seed={seed} "
+                    f"batch_source={batch_source} skipped_non_finite_batches={skipped_non_finite_batches}"
+                )
+                continue
             raise SystemExit(
                 f"Non-finite training loss at step {step} for {args.config} "
                 f"(seed={seed}, batch_source={batch_source})"
@@ -375,6 +388,14 @@ def train() -> None:
             metrics["status"] = "non_finite_grad_norm"
             with log_path.open("a", encoding="utf-8") as handle:
                 handle.write(json.dumps(metrics) + "\n")
+            optimizer.zero_grad(set_to_none=True)
+            if should_skip_non_finite_batch(train_cfg, skipped_non_finite_batches):
+                skipped_non_finite_batches += 1
+                print(
+                    f"warning=non_finite_grad_norm step={step} seed={seed} "
+                    f"batch_source={batch_source} skipped_non_finite_batches={skipped_non_finite_batches}"
+                )
+                continue
             raise SystemExit(
                 f"Non-finite gradient norm at step {step} for {args.config} "
                 f"(seed={seed}, batch_source={batch_source})"
