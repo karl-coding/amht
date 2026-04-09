@@ -195,6 +195,51 @@ class SuggestV4AdjustmentsTests(unittest.TestCase):
         self.assertIn("## AMHT vs Transformer", note)
         self.assertIn("## AMHT vs Mamba-3-Inspired Hybrid", note)
 
+    def test_round15_note_uses_round15_baselines(self) -> None:
+        summary = {
+            "models": {
+                "amht_v4_stage2_round15": {
+                    "label": "AMHT-V4-Stage2-R15-Budget",
+                    "niah": {"mean_accuracy": {"mean": 0.54, "std": 0.0}},
+                    "state_tracking": {"mean_accuracy": {"mean": 0.51, "std": 0.0}},
+                    "throughput": {"tokens_per_second": {"mean": 180000.0, "std": 0.0}},
+                },
+                "transformer_v4_stage2_round13_baseline": {
+                    "label": "Transformer",
+                    "niah": {"mean_accuracy": {"mean": 0.42, "std": 0.0}},
+                    "state_tracking": {"mean_accuracy": {"mean": 0.41, "std": 0.0}},
+                    "throughput": {"tokens_per_second": {"mean": 210000.0, "std": 0.0}},
+                },
+                "transformer_v4_stage2_round15_baseline": {
+                    "label": "Transformer",
+                    "niah": {"mean_accuracy": {"mean": 0.53, "std": 0.0}},
+                    "state_tracking": {"mean_accuracy": {"mean": 0.50, "std": 0.0}},
+                    "throughput": {"tokens_per_second": {"mean": 220000.0, "std": 0.0}},
+                },
+                "mamba3_hybrid_v4_stage2_round13_baseline": {
+                    "label": "Mamba",
+                    "niah": {"mean_accuracy": {"mean": 0.40, "std": 0.0}},
+                    "state_tracking": {"mean_accuracy": {"mean": 0.39, "std": 0.0}},
+                    "throughput": {"tokens_per_second": {"mean": 160000.0, "std": 0.0}},
+                },
+                "mamba3_hybrid_v4_stage2_round15_baseline": {
+                    "label": "Mamba",
+                    "niah": {"mean_accuracy": {"mean": 0.50, "std": 0.0}},
+                    "state_tracking": {"mean_accuracy": {"mean": 0.49, "std": 0.0}},
+                    "throughput": {"tokens_per_second": {"mean": 170000.0, "std": 0.0}},
+                },
+            }
+        }
+
+        best = MODULE.pick_best_amht(summary)
+        note = MODULE.build_note(summary)
+
+        self.assertEqual(best, "amht_v4_stage2_round15")
+        self.assertIn("## AMHT vs Transformer", note)
+        self.assertIn("## AMHT vs Mamba-3-Inspired Hybrid", note)
+        self.assertIn("- Baseline mean NIAH accuracy: `0.5300`", note)
+        self.assertIn("- Baseline mean NIAH accuracy: `0.5000`", note)
+
 
 if __name__ == "__main__":
     unittest.main()

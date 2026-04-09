@@ -63,6 +63,7 @@ def pick_best_amht(summary: dict) -> str | None:
     preferred_order = [
         key
         for key in (
+            "amht_v4_stage2_round15",
             "amht_v4_stage2_round14",
             "amht_v4_stage2_round13",
             "amht_v4_stage2_round12_retry",
@@ -155,6 +156,7 @@ def build_note(summary: dict) -> str:
         tag in best_amht
         for tag in (
             "stage2_round13",
+            "stage2_round15",
             "stage2_round14",
             "stage2_round12_retry",
             "stage2_round12",
@@ -205,6 +207,7 @@ def build_note(summary: dict) -> str:
             (
                 key
                 for key in (
+                    "transformer_v4_stage2_round15_baseline",
                     "transformer_v4_stage2_round13_baseline",
                     "transformer_v4_stage2_round14_baseline",
                     "transformer_v4_stage2_round11_state_tracking_diag_baseline",
@@ -224,6 +227,7 @@ def build_note(summary: dict) -> str:
             (
                 key
                 for key in (
+                    "mamba3_hybrid_v4_stage2_round15_baseline",
                     "mamba3_hybrid_v4_stage2_round13_baseline",
                     "mamba3_hybrid_v4_stage2_round14_baseline",
                     "mamba3_hybrid_v4_stage2_round11_state_tracking_diag_baseline",
@@ -247,6 +251,7 @@ def build_note(summary: dict) -> str:
             (
                 key
                 for key in (
+                    "transformer_v4_stage2_round15_baseline",
                     "transformer_v4_stage2_round13_baseline",
                     "transformer_v4_stage2_round14_baseline",
                     "transformer_v4_stage2_round11_state_tracking_diag_baseline",
@@ -266,6 +271,7 @@ def build_note(summary: dict) -> str:
             (
                 key
                 for key in (
+                    "mamba3_hybrid_v4_stage2_round15_baseline",
                     "mamba3_hybrid_v4_stage2_round13_baseline",
                     "mamba3_hybrid_v4_stage2_round14_baseline",
                     "mamba3_hybrid_v4_stage2_round11_state_tracking_diag_baseline",
@@ -289,6 +295,7 @@ def build_note(summary: dict) -> str:
             (
                 key
                 for key in (
+                    "transformer_v4_stage2_round15_baseline",
                     "transformer_v4_stage2_round13_baseline",
                     "transformer_v4_stage2_round14_baseline",
                     "transformer_v4_stage2_round11_state_tracking_diag_baseline",
@@ -308,6 +315,7 @@ def build_note(summary: dict) -> str:
             (
                 key
                 for key in (
+                    "mamba3_hybrid_v4_stage2_round15_baseline",
                     "mamba3_hybrid_v4_stage2_round13_baseline",
                     "mamba3_hybrid_v4_stage2_round14_baseline",
                     "mamba3_hybrid_v4_stage2_round11_state_tracking_diag_baseline",
