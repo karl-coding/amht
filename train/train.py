@@ -181,20 +181,48 @@ def batch_source_name(dataset_type: str, batch_sources: dict[str, int]) -> str:
     return dataset_type
 
 
-def disable_router_aux_for_batch(dataset_type: str, batch_sources: dict[str, int]) -> bool:
+def is_state_tracking_batch(dataset_type: str, batch_sources: dict[str, int]) -> bool:
     return batch_source_name(dataset_type, batch_sources) == "state_tracking"
 
 
-def disable_router_straight_through_for_batch(dataset_type: str, batch_sources: dict[str, int]) -> bool:
-    return batch_source_name(dataset_type, batch_sources) == "state_tracking"
+def state_tracking_runtime_flag(cfg: dict, key: str, default: bool) -> bool:
+    runtime_cfg = cfg.get("data", {}).get("state_tracking_runtime", {})
+    value = runtime_cfg.get(key)
+    if value is None:
+        return default
+    return bool(value)
 
 
-def disable_router_attention_for_batch(dataset_type: str, batch_sources: dict[str, int]) -> bool:
-    return batch_source_name(dataset_type, batch_sources) == "state_tracking"
+def disable_router_aux_for_batch(cfg: dict, dataset_type: str, batch_sources: dict[str, int]) -> bool:
+    return is_state_tracking_batch(dataset_type, batch_sources) and state_tracking_runtime_flag(
+        cfg,
+        "disable_router_aux",
+        True,
+    )
 
 
-def disable_memory_for_batch(dataset_type: str, batch_sources: dict[str, int]) -> bool:
-    return batch_source_name(dataset_type, batch_sources) == "state_tracking"
+def disable_router_straight_through_for_batch(cfg: dict, dataset_type: str, batch_sources: dict[str, int]) -> bool:
+    return is_state_tracking_batch(dataset_type, batch_sources) and state_tracking_runtime_flag(
+        cfg,
+        "disable_router_straight_through",
+        True,
+    )
+
+
+def disable_router_attention_for_batch(cfg: dict, dataset_type: str, batch_sources: dict[str, int]) -> bool:
+    return is_state_tracking_batch(dataset_type, batch_sources) and state_tracking_runtime_flag(
+        cfg,
+        "disable_router_attention",
+        True,
+    )
+
+
+def disable_memory_for_batch(cfg: dict, dataset_type: str, batch_sources: dict[str, int]) -> bool:
+    return is_state_tracking_batch(dataset_type, batch_sources) and state_tracking_runtime_flag(
+        cfg,
+        "disable_memory",
+        True,
+    )
 
 
 def parse_args() -> argparse.Namespace:
@@ -308,15 +336,15 @@ def train() -> None:
         router_straight_through_enabled = True
         router_attention_enabled = True
         memory_enabled = True
-        if disable_router_aux_for_batch(dataset_type, batch_sources):
+        if disable_router_aux_for_batch(cfg, dataset_type, batch_sources):
             router_weight = 0.0
             router_mean_weight = 0.0
             router_score_weight = 0.0
-        if disable_router_straight_through_for_batch(dataset_type, batch_sources):
+        if disable_router_straight_through_for_batch(cfg, dataset_type, batch_sources):
             router_straight_through_enabled = False
-        if disable_router_attention_for_batch(dataset_type, batch_sources):
+        if disable_router_attention_for_batch(cfg, dataset_type, batch_sources):
             router_attention_enabled = False
-        if disable_memory_for_batch(dataset_type, batch_sources):
+        if disable_memory_for_batch(cfg, dataset_type, batch_sources):
             memory_enabled = False
         losses = compute_loss(
             model=model,

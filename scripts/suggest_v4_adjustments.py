@@ -63,6 +63,7 @@ def pick_best_amht(summary: dict) -> str | None:
     preferred_order = [
         key
         for key in (
+            "amht_v4_stage2_round16",
             "amht_v4_stage2_round15",
             "amht_v4_stage2_round14",
             "amht_v4_stage2_round13",
@@ -152,9 +153,11 @@ def build_note(summary: dict) -> str:
         best_amht is not None and "stage2_round13" in best_amht and not round13_validation_complete
     )
     post_budget_mode = best_amht is not None and "stage2_round10" in best_amht
+    state_memory_mode = best_amht is not None and "stage2_round16" in best_amht
     stable_mixed_mode = best_amht is not None and any(
         tag in best_amht
         for tag in (
+            "stage2_round16",
             "stage2_round13",
             "stage2_round15",
             "stage2_round14",
@@ -201,12 +204,13 @@ def build_note(summary: dict) -> str:
         )
         intro = "Focus on recurrent-state diagnosis first. Mixed retrieval training should only be retried after the pure state-tracking path is numerically stable."
         favorable_line = "- This diagnostic is favorable: AMHT is stable and already shows a clear state-tracking edge before mixed training is reintroduced."
-    elif validated_stage2_mode:
+    elif state_memory_mode:
         stage_label = "2"
         transformer = next(
             (
                 key
                 for key in (
+                    "transformer_v4_stage2_round16_baseline",
                     "transformer_v4_stage2_round15_baseline",
                     "transformer_v4_stage2_round13_baseline",
                     "transformer_v4_stage2_round14_baseline",
@@ -227,6 +231,53 @@ def build_note(summary: dict) -> str:
             (
                 key
                 for key in (
+                    "mamba3_hybrid_v4_stage2_round16_baseline",
+                    "mamba3_hybrid_v4_stage2_round15_baseline",
+                    "mamba3_hybrid_v4_stage2_round13_baseline",
+                    "mamba3_hybrid_v4_stage2_round14_baseline",
+                    "mamba3_hybrid_v4_stage2_round11_state_tracking_diag_baseline",
+                    "mamba3_hybrid_v4_stage2_round11_retry_baseline",
+                    "mamba3_hybrid_v4_stage2_round11_baseline",
+                    "mamba3_hybrid_v4_stage2_round10_baseline",
+                    "mamba3_hybrid_v4_stage2_round7_retry_baseline",
+                    "mamba3_hybrid_v4_stage2_round7_baseline",
+                    "mamba3_hybrid_v4_stage2_round4_baseline",
+                    "mamba3_hybrid_v4_stage2_baseline",
+                )
+                if key in models
+            ),
+            None,
+        )
+        intro = "This round pivots from arbitrary hard retrieval to state-memory specialization. Retrieval is now a guardrail, while the main question is whether AMHT benefits once latent memory is actually trained on the state-sensitive batches."
+        favorable_line = "- This pivot is favorable: AMHT is finally being tested on a regime that matches its recurrent-plus-memory thesis instead of only on arbitrary final-query retrieval."
+    elif validated_stage2_mode:
+        stage_label = "2"
+        transformer = next(
+            (
+                key
+                for key in (
+                    "transformer_v4_stage2_round16_baseline",
+                    "transformer_v4_stage2_round15_baseline",
+                    "transformer_v4_stage2_round13_baseline",
+                    "transformer_v4_stage2_round14_baseline",
+                    "transformer_v4_stage2_round11_state_tracking_diag_baseline",
+                    "transformer_v4_stage2_round11_retry_baseline",
+                    "transformer_v4_stage2_round11_baseline",
+                    "transformer_v4_stage2_round10_baseline",
+                    "transformer_v4_stage2_round7_retry_baseline",
+                    "transformer_v4_stage2_round7_baseline",
+                    "transformer_v4_stage2_round4_baseline",
+                    "transformer_v4_stage2_baseline",
+                )
+                if key in models
+            ),
+            None,
+        )
+        mamba_ref = next(
+            (
+                key
+                for key in (
+                    "mamba3_hybrid_v4_stage2_round16_baseline",
                     "mamba3_hybrid_v4_stage2_round15_baseline",
                     "mamba3_hybrid_v4_stage2_round13_baseline",
                     "mamba3_hybrid_v4_stage2_round14_baseline",
@@ -251,6 +302,7 @@ def build_note(summary: dict) -> str:
             (
                 key
                 for key in (
+                    "transformer_v4_stage2_round16_baseline",
                     "transformer_v4_stage2_round15_baseline",
                     "transformer_v4_stage2_round13_baseline",
                     "transformer_v4_stage2_round14_baseline",
@@ -271,6 +323,7 @@ def build_note(summary: dict) -> str:
             (
                 key
                 for key in (
+                    "mamba3_hybrid_v4_stage2_round16_baseline",
                     "mamba3_hybrid_v4_stage2_round15_baseline",
                     "mamba3_hybrid_v4_stage2_round13_baseline",
                     "mamba3_hybrid_v4_stage2_round14_baseline",
@@ -295,6 +348,7 @@ def build_note(summary: dict) -> str:
             (
                 key
                 for key in (
+                    "transformer_v4_stage2_round16_baseline",
                     "transformer_v4_stage2_round15_baseline",
                     "transformer_v4_stage2_round13_baseline",
                     "transformer_v4_stage2_round14_baseline",
@@ -315,6 +369,7 @@ def build_note(summary: dict) -> str:
             (
                 key
                 for key in (
+                    "mamba3_hybrid_v4_stage2_round16_baseline",
                     "mamba3_hybrid_v4_stage2_round15_baseline",
                     "mamba3_hybrid_v4_stage2_round13_baseline",
                     "mamba3_hybrid_v4_stage2_round14_baseline",
@@ -644,6 +699,26 @@ def build_note(summary: dict) -> str:
                 "2. Stop opening new backbone, router, or memory axes on the current `modsum` benchmark.",
                 "3. Redesign or simplify the state-tracking benchmark so it separates the models above chance at the same budget.",
                 "4. Resume architecture tuning only after the benchmark is informative.",
+                "",
+            ]
+        )
+    elif state_memory_mode and quality_deficit:
+        lines.extend(
+            [
+                "1. Keep the memory-on-state policy fixed; do not revert to the old state-batch path where latent memory is disabled.",
+                "2. Adjust the retrieval/state mixture before adding more steps or opening a new backbone axis.",
+                "3. Treat retrieval as a guardrail rather than the main target until a state-sensitive advantage appears.",
+                "4. Re-open router changes only if the state-memory pivot still fails while retrieval remains competitive.",
+                "",
+            ]
+        )
+    elif state_memory_mode:
+        lines.extend(
+            [
+                "1. Validate the memory-on-state pivot with extra seeds before making new architectural changes.",
+                "2. Keep retrieval in the loop as a guardrail, but read state-tracking as the main decision gate.",
+                "3. Tune the retrieval/state mixture before touching backbone capacity.",
+                "4. Re-open router changes only if the state-memory pivot plateaus with acceptable retrieval quality.",
                 "",
             ]
         )

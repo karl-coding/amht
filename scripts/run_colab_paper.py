@@ -35,6 +35,13 @@ class ModelSpec:
 
 
 MODEL_SPECS = {
+    "amht_v4_stage2_round16": ModelSpec(
+        key="amht_v4_stage2_round16",
+        label="AMHT-V4-Stage2-R16-StateMemory",
+        config="train/config_amht_v4_stage2_round16.yaml",
+        color="#020617",
+        marker="D",
+    ),
     "amht_v4_stage2_round15": ModelSpec(
         key="amht_v4_stage2_round15",
         label="AMHT-V4-Stage2-R15-Budget",
@@ -294,6 +301,13 @@ MODEL_SPECS = {
         color="#db2777",
         marker="s",
     ),
+    "transformer_v4_stage2_round16_baseline": ModelSpec(
+        key="transformer_v4_stage2_round16_baseline",
+        label="Transformer",
+        config="train/config_transformer_v4_stage2_round16_baseline.yaml",
+        color="#be185d",
+        marker="s",
+    ),
     "transformer_v4_stage2_round11_state_tracking_diag_baseline": ModelSpec(
         key="transformer_v4_stage2_round11_state_tracking_diag_baseline",
         label="Transformer-State-Diag",
@@ -385,6 +399,13 @@ MODEL_SPECS = {
         color="#115e59",
         marker="D",
     ),
+    "mamba3_hybrid_v4_stage2_round16_baseline": ModelSpec(
+        key="mamba3_hybrid_v4_stage2_round16_baseline",
+        label="Mamba-3-Inspired Hybrid",
+        config="train/config_mamba3_hybrid_v4_stage2_round16_baseline.yaml",
+        color="#134e4a",
+        marker="D",
+    ),
     "mamba3_hybrid_v4_stage2_round11_state_tracking_diag_baseline": ModelSpec(
         key="mamba3_hybrid_v4_stage2_round11_state_tracking_diag_baseline",
         label="Mamba-3-Inspired Hybrid-State-Diag",
@@ -421,6 +442,76 @@ def materialize_eval_config(base_config_path: Path, overrides: dict, output_path
 
 
 PRESETS = {
+    "stage2_round16_t4_validate": {
+        "models": [
+            "amht_v4_stage2_round16",
+            "transformer_v4_stage2_round16_baseline",
+            "mamba3_hybrid_v4_stage2_round16_baseline",
+        ],
+        "seeds": [42, 43, 44],
+        "seq_len": 16384,
+        "steps_scale": 8.0,
+        "warmup_steps": 1,
+        "benchmark_steps": 1,
+        "eval_task": "all",
+        "niah_seq_len": 16384,
+        "eval_config_overrides": {
+            "evaluation": {
+                "niah": {
+                    "batch_size": 1,
+                },
+            },
+        },
+    },
+    "stage2_round16_t4": {
+        "models": [
+            "amht_v4_stage2_round16",
+            "transformer_v4_stage2_round16_baseline",
+            "mamba3_hybrid_v4_stage2_round16_baseline",
+        ],
+        "seeds": [42],
+        "seq_len": 16384,
+        "steps_scale": 8.0,
+        "warmup_steps": 1,
+        "benchmark_steps": 1,
+        "eval_task": "all",
+        "niah_seq_len": 16384,
+        "eval_config_overrides": {
+            "evaluation": {
+                "niah": {
+                    "batch_size": 1,
+                },
+            },
+        },
+    },
+    "stage2_round16_validate": {
+        "models": [
+            "amht_v4_stage2_round16",
+            "transformer_v4_stage2_round16_baseline",
+            "mamba3_hybrid_v4_stage2_round16_baseline",
+        ],
+        "seeds": [42, 43, 44],
+        "seq_len": 16384,
+        "steps_scale": 8.0,
+        "warmup_steps": 1,
+        "benchmark_steps": 2,
+        "eval_task": "all",
+        "niah_seq_len": 16384,
+    },
+    "stage2_round16": {
+        "models": [
+            "amht_v4_stage2_round16",
+            "transformer_v4_stage2_round16_baseline",
+            "mamba3_hybrid_v4_stage2_round16_baseline",
+        ],
+        "seeds": [42],
+        "seq_len": 16384,
+        "steps_scale": 8.0,
+        "warmup_steps": 1,
+        "benchmark_steps": 2,
+        "eval_task": "all",
+        "niah_seq_len": 16384,
+    },
     "stage2_round15_t4_validate": {
         "models": [
             "amht_v4_stage2_round15",

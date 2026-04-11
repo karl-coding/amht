@@ -240,6 +240,38 @@ class SuggestV4AdjustmentsTests(unittest.TestCase):
         self.assertIn("- Baseline mean NIAH accuracy: `0.5300`", note)
         self.assertIn("- Baseline mean NIAH accuracy: `0.5000`", note)
 
+    def test_round16_note_uses_round16_baselines_and_state_memory_guidance(self) -> None:
+        summary = {
+            "models": {
+                "amht_v4_stage2_round16": {
+                    "label": "AMHT-V4-Stage2-R16-StateMemory",
+                    "niah": {"mean_accuracy": {"mean": 0.88, "std": 0.0}},
+                    "state_tracking": {"mean_accuracy": {"mean": 0.58, "std": 0.0}},
+                    "throughput": {"tokens_per_second": {"mean": 275000.0, "std": 0.0}},
+                },
+                "transformer_v4_stage2_round16_baseline": {
+                    "label": "Transformer",
+                    "niah": {"mean_accuracy": {"mean": 0.86, "std": 0.0}},
+                    "state_tracking": {"mean_accuracy": {"mean": 0.54, "std": 0.0}},
+                    "throughput": {"tokens_per_second": {"mean": 300000.0, "std": 0.0}},
+                },
+                "mamba3_hybrid_v4_stage2_round16_baseline": {
+                    "label": "Mamba",
+                    "niah": {"mean_accuracy": {"mean": 0.84, "std": 0.0}},
+                    "state_tracking": {"mean_accuracy": {"mean": 0.53, "std": 0.0}},
+                    "throughput": {"tokens_per_second": {"mean": 240000.0, "std": 0.0}},
+                },
+            }
+        }
+
+        best = MODULE.pick_best_amht(summary)
+        note = MODULE.build_note(summary)
+
+        self.assertEqual(best, "amht_v4_stage2_round16")
+        self.assertIn("state-memory specialization", note)
+        self.assertIn("## AMHT vs Transformer", note)
+        self.assertIn("Validate the memory-on-state pivot with extra seeds", note)
+
 
 if __name__ == "__main__":
     unittest.main()

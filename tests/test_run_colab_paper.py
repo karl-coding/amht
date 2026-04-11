@@ -1,9 +1,16 @@
 import unittest
 
-from scripts.run_colab_paper import deep_merge_dict
+from scripts.run_colab_paper import MODEL_SPECS, PRESETS, deep_merge_dict
 
 
 class RunColabPaperTests(unittest.TestCase):
+    def test_round16_presets_and_models_are_registered(self) -> None:
+        self.assertIn("amht_v4_stage2_round16", MODEL_SPECS)
+        self.assertIn("transformer_v4_stage2_round16_baseline", MODEL_SPECS)
+        self.assertIn("mamba3_hybrid_v4_stage2_round16_baseline", MODEL_SPECS)
+        self.assertIn("stage2_round16", PRESETS)
+        self.assertIn("stage2_round16_t4", PRESETS)
+
     def test_deep_merge_dict_overrides_nested_eval_values_only(self) -> None:
         base = {
             "training": {"steps": 200},
