@@ -146,6 +146,8 @@ We compare three effective operating points:
 
 The AMHT-Fast and AMHT-Accurate configurations are produced from the same architecture family and define an explicit efficiency-quality frontier.
 
+For the current V2 draft, the reported baseline is the matched Transformer only. In the repository's updated V4 comparison plan, the additional hybrid comparator is named the \emph{Mamba-3-inspired hybrid baseline}. This wording is intentional: the implemented comparison model borrows stronger recurrent-backbone and fixed-period attention ideas for controlled benchmarking, but it is not presented as a strict reproduction of the original Mamba-3 paper.
+
 \subsection{Protocol}
 All major comparisons are run at sequence length 8192. We report:
 \begin{itemize}
@@ -281,7 +283,7 @@ This draft has several important limitations.
 
 First, the benchmark is synthetic and retrieval-oriented. It demonstrates long-context selective recall, but it is not yet a full natural-language long-context benchmark.
 
-Second, the baseline set is still incomplete. The current comparison includes a local-attention Transformer but not yet a denser Transformer baseline, a sparse Transformer baseline, or a memory-centric SSM baseline such as Mamba-family models.
+Second, the baseline set is still incomplete. The current comparison includes a local-attention Transformer but not yet the repository's planned Mamba-3-inspired hybrid baseline or a pure recurrence-first baseline. Any future paper version should keep that wording precise: unless the implementation and training recipe are matched in detail, the comparison should be described as \emph{Mamba-3-inspired} rather than as a direct Mamba-3 reproduction.
 
 Third, although the architecture now provides clear throughput benefits, the routed sparse attention implementation is still relatively simple and likely not yet systems-optimal.
 
@@ -297,7 +299,7 @@ These results suggest that routed hybrid architectures are a promising direction
 \section{Reproducibility Notes}
 The repository contains:
 \begin{itemize}
-  \item explicit AMHT and Transformer configs,
+  \item explicit AMHT, Transformer, and future Mamba-3-inspired hybrid comparison configs,
   \item multi-seed benchmarking scripts,
   \item structured JSON and JSONL logging,
   \item benchmark aggregation utilities.

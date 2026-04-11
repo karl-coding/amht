@@ -3,6 +3,7 @@ from __future__ import annotations
 from bisect import bisect_right
 import random
 from collections.abc import Mapping, Sequence
+from typing import Any
 
 try:
     import torch
@@ -51,6 +52,8 @@ class RetrievalDataset:
         value_start: int = 1000,
         num_pairs: int = 4,
         num_keys: int = 16,
+        value_pool_size: int | None = None,
+        random_value_mapping: bool = False,
         depth_choices: list[float] | None = None,
         seed: int | None = None,
     ) -> None:
@@ -62,6 +65,12 @@ class RetrievalDataset:
         self.value_start = value_start
         self.num_pairs = num_pairs
         self.num_keys = max(num_keys, num_pairs)
+        self.value_pool_size = (
+            max(int(value_pool_size), num_pairs)
+            if value_pool_size is not None
+            else self.num_keys
+        )
+        self.random_value_mapping = bool(random_value_mapping)
         self.depth_choices = depth_choices or [0.1, 0.3, 0.5, 0.7, 0.9]
         self.seed = seed
 
@@ -76,31 +85,99 @@ class RetrievalDataset:
             rng = random.Random(self.seed + index)
             generator = torch.Generator()
             generator.manual_seed(self.seed + index)
-
-        randint_kwargs = {"dtype": torch.long}
-        if generator is not None:
-            randint_kwargs["generator"] = generator
-        tokens = torch.randint(
-            self.value_start + self.num_keys + 10,
-            self.vocab_size,
-            (self.seq_len,),
-            **randint_kwargs,
+        tokens, _ = build_retrieval_batch(
+            batch_size=1,
+            vocab_size=self.vocab_size,
+            seq_len=self.seq_len,
+            pad_token=self.pad_token,
+            key_start=self.key_start,
+            value_start=self.value_start,
+            num_pairs=self.num_pairs,
+            num_keys=self.num_keys,
+            value_pool_size=self.value_pool_size,
+            random_value_mapping=self.random_value_mapping,
+            depth_choices=self.depth_choices,
+            rng=rng,
+            generator=generator,
         )
-        tokens[0] = self.pad_token
-        selected_keys = rng.sample(range(self.num_keys), self.num_pairs)
-        target_idx = rng.randrange(self.num_pairs)
-        target_depth = rng.choice(self.depth_choices)
-        target_position = min(self.seq_len - 4, max(1, int(self.seq_len * target_depth)))
+        return tokens[0]
 
-        occupied = {target_position, target_position + 1, self.seq_len - 2, self.seq_len - 1}
-        available_positions = list(range(1, self.seq_len - 3))
-        rng.shuffle(available_positions)
 
-        pair_positions: list[int | None] = [None] * self.num_pairs
-        pair_positions[target_idx] = target_position
+def build_retrieval_batch(
+    *,
+    batch_size: int,
+    vocab_size: int,
+    seq_len: int,
+    pad_token: int = 0,
+    key_start: int = 100,
+    value_start: int = 1000,
+    num_pairs: int = 4,
+    num_keys: int = 16,
+    value_pool_size: int | None = None,
+    random_value_mapping: bool = False,
+    depth_choices: Sequence[float] | None = None,
+    target_depth: float | None = None,
+    rng: random.Random | Any | None = None,
+    generator: torch.Generator | None = None,
+    device: torch.device | None = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    if batch_size <= 0:
+        raise ValueError("Retrieval batch_size must be > 0")
+    if seq_len < 4:
+        raise ValueError("Retrieval requires seq_len >= 4")
+    if num_pairs <= 0:
+        raise ValueError("Retrieval requires num_pairs > 0")
+    resolved_num_keys = max(int(num_keys), int(num_pairs))
+    resolved_value_pool_size = (
+        max(int(value_pool_size), int(num_pairs))
+        if value_pool_size is not None
+        else resolved_num_keys
+    )
+    if key_start < 0 or value_start < 0:
+        raise ValueError("Retrieval token ranges must start at non-negative ids")
+    required_vocab = max(
+        key_start + resolved_num_keys,
+        value_start + max(resolved_num_keys, resolved_value_pool_size),
+    )
+    if required_vocab >= vocab_size:
+        raise ValueError("Retrieval token ranges must fit inside the configured vocabulary")
+
+    depth_pool = [float(depth) for depth in (depth_choices or [0.1, 0.3, 0.5, 0.7, 0.9])]
+    if not depth_pool and target_depth is None:
+        raise ValueError("Retrieval requires at least one target depth choice")
+    local_rng = rng if rng is not None else random
+
+    background_low = required_vocab + 10
+    tokens = _torch_randint(
+        background_low,
+        vocab_size,
+        (batch_size, seq_len),
+        generator=generator,
+        device=device,
+    )
+    tokens[:, 0] = pad_token
+    expected = torch.empty((batch_size,), dtype=torch.long, device=device)
+
+    for batch_index in range(batch_size):
+        selected_keys = local_rng.sample(range(resolved_num_keys), num_pairs)
+        if random_value_mapping:
+            selected_values = local_rng.sample(range(resolved_value_pool_size), num_pairs)
+        else:
+            selected_values = list(selected_keys)
+
+        query_pair_index = int(local_rng.randrange(num_pairs))
+        depth = float(target_depth) if target_depth is not None else float(local_rng.choice(depth_pool))
+        query_position = min(seq_len - 4, max(1, int(seq_len * depth)))
+
+        occupied = {query_position, query_position + 1, seq_len - 2, seq_len - 1}
+        available_positions = list(range(1, seq_len - 3))
+        local_rng.shuffle(available_positions)
+
+        pair_positions: list[int | None] = [None] * num_pairs
+        pair_positions[query_pair_index] = query_position
         distractor_positions: list[int] = []
         for pos in available_positions:
-            if len(distractor_positions) >= self.num_pairs - 1:
+            if len(distractor_positions) >= num_pairs - 1:
                 break
             if pos in occupied or (pos + 1) in occupied:
                 continue
@@ -108,24 +185,27 @@ class RetrievalDataset:
             occupied.add(pos)
             occupied.add(pos + 1)
 
+        if len(distractor_positions) != num_pairs - 1:
+            raise ValueError("Retrieval sequence is too short to place all key-value pairs without overlap")
+
         distractor_iter = iter(sorted(distractor_positions))
-        for pair_idx in range(self.num_pairs):
-            if pair_positions[pair_idx] is None:
-                pair_positions[pair_idx] = next(distractor_iter)
+        for pair_index in range(num_pairs):
+            if pair_positions[pair_index] is None:
+                pair_positions[pair_index] = next(distractor_iter)
 
-        for pair_idx, pos in enumerate(pair_positions):
-            key_id = selected_keys[pair_idx]
-            key_token = self.key_start + key_id
-            value_token = self.value_start + key_id
-            tokens[pos] = key_token
-            tokens[pos + 1] = value_token
+        for pair_index, pos in enumerate(pair_positions):
+            key_token = key_start + selected_keys[pair_index]
+            value_token = value_start + selected_values[pair_index]
+            tokens[batch_index, pos] = key_token
+            tokens[batch_index, pos + 1] = value_token
 
-        target_key = selected_keys[target_idx]
-        query_key = self.key_start + target_key
-        answer_value = self.value_start + target_key
-        tokens[-2] = query_key
-        tokens[-1] = answer_value
-        return tokens
+        query_key_token = key_start + selected_keys[query_pair_index]
+        answer_value_token = value_start + selected_values[query_pair_index]
+        tokens[batch_index, -2] = query_key_token
+        tokens[batch_index, -1] = answer_value_token
+        expected[batch_index] = answer_value_token
+
+    return tokens, expected
 
 
 def _torch_randint(

@@ -1,0 +1,22 @@
+{
+  "preset": "stage2_round4_validate",
+  "models": [
+    "amht_v4_stage2_round4",
+    "transformer_v4_stage2_round4_baseline",
+    "mamba3_hybrid_v4_stage2_round4_baseline"
+  ],
+  "seeds": [
+    42,
+    43,
+    44
+  ],
+  "seq_len": 16384,
+  "device": "auto",
+  "steps_scale": 2.0,
+  "warmup_steps": 1,
+  "benchmark_steps": 2,
+  "eval_task": "all",
+  "niah_seq_len": 16384,
+  "generated_at_utc": "2026-04-06T23:33:47.142915+00:00",
+  "python": "/Users/karl/aiProject/amht-codex/.venv/bin/python"
+}

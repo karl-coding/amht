@@ -98,6 +98,12 @@ def build_retrieval_dataset(
         value_start=int(retrieval_cfg["value_start"]),
         num_pairs=int(retrieval_cfg["num_pairs"]),
         num_keys=int(retrieval_cfg.get("num_keys", retrieval_cfg["num_pairs"])),
+        value_pool_size=(
+            None
+            if retrieval_cfg.get("value_pool_size") is None
+            else int(retrieval_cfg["value_pool_size"])
+        ),
+        random_value_mapping=bool(retrieval_cfg.get("random_value_mapping", False)),
         depth_choices=[
             float(depth)
             for depth in retrieval_cfg.get(

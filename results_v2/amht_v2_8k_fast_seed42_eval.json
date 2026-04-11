@@ -1,0 +1,64 @@
+[
+  {
+    "task": "throughput",
+    "device": "cuda",
+    "seq_len": 8192,
+    "batch_size": 1,
+    "steps": 4,
+    "tokens_per_second": 120707.27211933369,
+    "milliseconds_per_step": 67.86666500011052,
+    "seed": 42
+  },
+  {
+    "task": "niah",
+    "device": "cuda",
+    "seq_len": 8192,
+    "needle_depths": [
+      0.05,
+      0.15,
+      0.3,
+      0.5,
+      0.7,
+      0.85,
+      0.95
+    ],
+    "accuracy_by_depth": [
+      0.0,
+      0.0,
+      1.0,
+      1.0,
+      0.0,
+      1.0,
+      1.0
+    ],
+    "mean_accuracy": 0.5714285714285714,
+    "seed": 42
+  },
+  {
+    "task": "scaling",
+    "device": "cuda",
+    "results": [
+      {
+        "seq_len": 1024,
+        "tokens_per_second": 102480.92919151107,
+        "milliseconds_per_step": 9.992102999831332
+      },
+      {
+        "seq_len": 2048,
+        "tokens_per_second": 139491.21906047687,
+        "milliseconds_per_step": 14.681927749961687
+      },
+      {
+        "seq_len": 4096,
+        "tokens_per_second": 148664.40179080298,
+        "milliseconds_per_step": 27.55198925001423
+      },
+      {
+        "seq_len": 8192,
+        "tokens_per_second": 146329.51645874404,
+        "milliseconds_per_step": 55.98323699996399
+      }
+    ],
+    "seed": 42
+  }
+]

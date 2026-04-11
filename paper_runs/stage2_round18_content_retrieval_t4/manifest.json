@@ -1,0 +1,28 @@
+{
+  "preset": "stage2_round18_content_retrieval_t4",
+  "models": [
+    "amht_v4_stage2_round18_content_retrieval",
+    "transformer_v4_stage2_round18_content_retrieval_baseline",
+    "mamba3_hybrid_v4_stage2_round18_content_retrieval_baseline"
+  ],
+  "seeds": [
+    42
+  ],
+  "seq_len": 16384,
+  "device": "auto",
+  "steps_scale": 4.0,
+  "warmup_steps": 1,
+  "benchmark_steps": 1,
+  "eval_task": "all",
+  "niah_seq_len": 16384,
+  "eval_config_overrides": {
+    "evaluation": {
+      "niah": {
+        "batch_size": 1,
+        "repeats": 2
+      }
+    }
+  },
+  "generated_at_utc": "2026-04-11T18:40:49.874039+00:00",
+  "python": "/Users/karl/aiProject/amht-codex/.venv/bin/python"
+}

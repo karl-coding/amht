@@ -9,6 +9,8 @@ except ImportError as exc:  # pragma: no cover
         "PyTorch is required to run AMHT. Install dependencies from requirements.txt."
     ) from exc
 
+from data.dataset import build_retrieval_batch
+
 
 def build_niah_batch(
     batch_size: int,
@@ -19,35 +21,25 @@ def build_niah_batch(
     value_start: int,
     num_pairs: int,
     num_keys: int,
+    value_pool_size: int | None,
+    random_value_mapping: bool,
     depth: float,
     device: torch.device,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    tokens = torch.randint(value_start + num_keys + 10, vocab_size, (batch_size, seq_len), device=device)
-    tokens[:, 0] = pad_token
-    expected = torch.empty((batch_size,), dtype=torch.long, device=device)
-
-    base_positions = [
-        min(seq_len - 4, max(1, int(seq_len * depth))),
-        min(seq_len - 8, max(2, int(seq_len * 0.25))),
-        min(seq_len - 12, max(3, int(seq_len * 0.75))),
-        min(seq_len - 16, max(4, int(seq_len * 0.4))),
-    ]
-    while len(base_positions) < num_pairs:
-        base_positions.append(min(seq_len - 20 - 2 * len(base_positions), seq_len - 4))
-
-    for batch_idx in range(batch_size):
-        permutation = torch.randperm(num_keys, device=device)[:num_pairs]
-        target_idx = torch.randint(0, num_pairs, (1,), device=device).item()
-        for pair_idx in range(num_pairs):
-            pos = min(base_positions[pair_idx], seq_len - 3)
-            key_id = permutation[pair_idx].item()
-            tokens[batch_idx, pos] = key_start + key_id
-            tokens[batch_idx, pos + 1] = value_start + key_id
-        target_key = permutation[target_idx].item()
-        tokens[batch_idx, -2] = key_start + target_key
-        expected[batch_idx] = value_start + target_key
-        tokens[batch_idx, -1] = expected[batch_idx]
-    return tokens, expected
+    return build_retrieval_batch(
+        batch_size=batch_size,
+        vocab_size=vocab_size,
+        seq_len=seq_len,
+        pad_token=pad_token,
+        key_start=key_start,
+        value_start=value_start,
+        num_pairs=num_pairs,
+        num_keys=num_keys,
+        value_pool_size=value_pool_size,
+        random_value_mapping=random_value_mapping,
+        target_depth=depth,
+        device=device,
+    )
 
 
 def evaluate_niah_hits(logits: torch.Tensor, expected: torch.Tensor) -> float:
@@ -92,6 +84,12 @@ def benchmark_niah(model, cfg: dict, device: torch.device) -> dict:
                 value_start=int(niah_cfg["value_start"]),
                 num_pairs=int(niah_cfg["num_pairs"]),
                 num_keys=int(niah_cfg.get("num_keys", niah_cfg["num_pairs"])),
+                value_pool_size=(
+                    None
+                    if niah_cfg.get("value_pool_size") is None
+                    else int(niah_cfg["value_pool_size"])
+                ),
+                random_value_mapping=bool(niah_cfg.get("random_value_mapping", False)),
                 depth=float(depth),
                 device=device,
             )
@@ -112,6 +110,14 @@ def benchmark_niah(model, cfg: dict, device: torch.device) -> dict:
         "forward_batch_size": forward_batch_size,
         "repeats": repeats,
         "needle_depths": list(niah_cfg["needle_depths"]),
+        "num_pairs": int(niah_cfg["num_pairs"]),
+        "num_keys": int(niah_cfg.get("num_keys", niah_cfg["num_pairs"])),
+        "value_pool_size": (
+            None
+            if niah_cfg.get("value_pool_size") is None
+            else int(niah_cfg["value_pool_size"])
+        ),
+        "random_value_mapping": bool(niah_cfg.get("random_value_mapping", False)),
         "accuracy_by_depth": scores,
         "mean_accuracy": mean(scores) if scores else 0.0,
     }

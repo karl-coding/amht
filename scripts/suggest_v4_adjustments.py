@@ -63,6 +63,7 @@ def pick_best_amht(summary: dict) -> str | None:
     preferred_order = [
         key
         for key in (
+            "amht_v4_stage2_round18_content_retrieval",
             "amht_v4_stage2_round17_state_memory_diag",
             "amht_v4_stage2_round16",
             "amht_v4_stage2_round15",
@@ -149,6 +150,7 @@ def build_note(summary: dict) -> str:
     diagnostic_mode = best_amht is not None and (
         "state_tracking_diag" in best_amht or "state_memory_diag" in best_amht
     )
+    content_retrieval_mode = best_amht is not None and "stage2_round18_content_retrieval" in best_amht
     state_memory_diag_mode = best_amht is not None and "state_memory_diag" in best_amht
     validated_stage2_mode = (
         best_amht is not None and "stage2_round13" in best_amht and round13_validation_complete
@@ -176,7 +178,53 @@ def build_note(summary: dict) -> str:
         )
     )
 
-    if diagnostic_mode:
+    if content_retrieval_mode:
+        stage_label = "2"
+        transformer = next(
+            (
+                key
+                for key in (
+                    "transformer_v4_stage2_round18_content_retrieval_baseline",
+                    "transformer_v4_stage2_round16_baseline",
+                    "transformer_v4_stage2_round15_baseline",
+                    "transformer_v4_stage2_round13_baseline",
+                    "transformer_v4_stage2_round14_baseline",
+                    "transformer_v4_stage2_round11_retry_baseline",
+                    "transformer_v4_stage2_round11_baseline",
+                    "transformer_v4_stage2_round10_baseline",
+                    "transformer_v4_stage2_round7_retry_baseline",
+                    "transformer_v4_stage2_round7_baseline",
+                    "transformer_v4_stage2_round4_baseline",
+                    "transformer_v4_stage2_baseline",
+                )
+                if key in models
+            ),
+            None,
+        )
+        mamba_ref = next(
+            (
+                key
+                for key in (
+                    "mamba3_hybrid_v4_stage2_round18_content_retrieval_baseline",
+                    "mamba3_hybrid_v4_stage2_round16_baseline",
+                    "mamba3_hybrid_v4_stage2_round15_baseline",
+                    "mamba3_hybrid_v4_stage2_round13_baseline",
+                    "mamba3_hybrid_v4_stage2_round14_baseline",
+                    "mamba3_hybrid_v4_stage2_round11_retry_baseline",
+                    "mamba3_hybrid_v4_stage2_round11_baseline",
+                    "mamba3_hybrid_v4_stage2_round10_baseline",
+                    "mamba3_hybrid_v4_stage2_round7_retry_baseline",
+                    "mamba3_hybrid_v4_stage2_round7_baseline",
+                    "mamba3_hybrid_v4_stage2_round4_baseline",
+                    "mamba3_hybrid_v4_stage2_baseline",
+                )
+                if key in models
+            ),
+            None,
+        )
+        intro = "This round fixes the old retrieval leakage. The query token no longer determines the answer by construction, so the reported `NIAH` score now measures real context retrieval instead of lexical translation."
+        favorable_line = "- This corrected retrieval benchmark is favorable: AMHT stays competitive on leakage-free retrieval while preserving the throughput edge."
+    elif diagnostic_mode:
         stage_label = "2 Diagnostic"
         transformer = next(
             (
@@ -474,7 +522,34 @@ def build_note(summary: dict) -> str:
             "",
         ]
 
-        if validated_stage2_mode:
+        if content_retrieval_mode:
+            block.extend(
+                [
+                    "Recommendation:",
+                    *(
+                        [
+                            "- The corrected retrieval benchmark is finally measuring real context lookup, and AMHT is ahead on both quality and throughput.",
+                            "- Freeze the architecture and validate this result across seeds before reopening router or memory tuning.",
+                        ]
+                        if acc_gap is not None
+                        and acc_gap >= 0.03
+                        and tps_gap is not None
+                        and tps_gap > 0.0
+                        else [
+                            "- The corrected retrieval benchmark is informative, but this baseline still has the stronger overall tradeoff on leakage-free retrieval.",
+                            "- Do not reopen latent-memory claims here. Keep `stage2_round13` only as the stable efficiency reference and use corrected retrieval as the main gate for further tuning.",
+                        ]
+                        if acc_gap is not None
+                        and acc_gap < -quality_tie_tolerance
+                        else [
+                            "- The corrected retrieval benchmark is now meaningful, and AMHT is at least competitive on it.",
+                            "- Validate this round before any new architecture change; only reopen router supervision if the corrected retrieval gap stays small but reproducible.",
+                        ]
+                    ),
+                    "",
+                ]
+            )
+        elif validated_stage2_mode:
             block.extend(
                 [
                     "Recommendation:",
@@ -692,7 +767,17 @@ def build_note(summary: dict) -> str:
         acc_gap is not None and acc_gap >= -quality_tie_tolerance and tps_gap is not None and tps_gap > 0.0
         for acc_gap, tps_gap in comparison_gaps
     )
-    if diagnostic_mode:
+    if content_retrieval_mode:
+        lines.extend(
+            [
+                "1. Run `stage2_round18_content_retrieval_validate` before making any new architectural change.",
+                "2. Keep the round13/18 backbone fixed so the corrected retrieval benchmark isolates benchmark quality instead of architecture churn.",
+                "3. Use corrected retrieval as the main decision gate; treat old saturated `NIAH` results only as historical context.",
+                "4. If AMHT still cannot beat the baselines on leakage-free retrieval, stop claiming a retrieval-specific AMHT advantage and revisit the paper framing.",
+                "",
+            ]
+        )
+    elif diagnostic_mode:
         lines.extend(
             (
                 [

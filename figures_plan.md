@@ -6,6 +6,12 @@ Add the minimum figure set needed to turn `paper.tex` from a clean draft into a 
 
 The current paper is text-complete, but still missing the visuals that make the architecture and benchmark results easy to parse.
 
+## Naming Note
+
+If later figure legends, tables, or captions add the hybrid comparison model introduced in the V4 benchmark plan, label it as `Mamba-3-inspired hybrid baseline` or `Mamba-3-Inspired Hybrid`.
+
+Do not label it as `Mamba-3 baseline` unless the implementation is upgraded to a strict paper-faithful reproduction.
+
 ## Figure 1: AMHT V2 Architecture
 
 **Filename**

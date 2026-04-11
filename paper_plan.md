@@ -26,7 +26,7 @@ Choose one primary claim and treat the rest as supporting claims.
 
 ### Claim A
 
-AMHT achieves comparable or better long-context retrieval accuracy than sparse/local attention Transformer baselines while maintaining lower effective attention cost.
+AMHT achieves comparable or better long-context retrieval accuracy than the Transformer baseline and the Mamba-3-inspired hybrid baseline while maintaining lower effective attention cost.
 
 ### Claim B
 
@@ -77,10 +77,9 @@ Purpose:
 
 Required baseline families:
 
-- dense Transformer baseline
-- local/sliding-window Transformer baseline
-- sparse attention baseline
-- optional SSM-family baseline if feasible
+- Transformer baseline
+- Mamba-3-inspired hybrid baseline
+- optional pure recurrence baseline if feasible
 
 ## Current Verified Status
 
@@ -141,8 +140,8 @@ AMHT architecture diagram:
 NIAH accuracy by depth for:
 
 - AMHT
-- dense Transformer baseline
-- local attention baseline
+- Transformer baseline
+- Mamba-3-inspired hybrid baseline
 
 ### Figure 3
 
@@ -228,29 +227,18 @@ Status:
 
 ## Baselines to Implement
 
-### Baseline 1: Dense Transformer
+### Baseline 1: Transformer Baseline
 
 Purpose:
 
-- establish upper-quality baseline at smaller context
+- establish the non-recurrent attention baseline used in the default paper runs
 
-### Baseline 2: Local Attention Transformer
-
-Purpose:
-
-- compare against a more realistic efficient-attention baseline
-
-### Baseline 3: Sparse Attention Transformer
+### Baseline 2: Mamba-3-Inspired Hybrid Baseline
 
 Purpose:
 
-- isolate whether AMHT’s benefit comes from routing plus memory rather than sparse attention alone
-
-### Baseline 4: Optional SSM Baseline
-
-Purpose:
-
-- compare the hybrid model against a memory-centric non-attention family
+- compare AMHT against a fixed-period hybrid that uses the stronger recurrent backbone without AMHT's router or latent-memory advantages
+- label this baseline as Mamba-3-inspired rather than Mamba-3 to avoid implying a strict paper-faithful reproduction
 
 ## Reproducibility Requirements
 

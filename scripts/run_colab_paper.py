@@ -35,6 +35,13 @@ class ModelSpec:
 
 
 MODEL_SPECS = {
+    "amht_v4_stage2_round18_content_retrieval": ModelSpec(
+        key="amht_v4_stage2_round18_content_retrieval",
+        label="AMHT-V4-Stage2-R18-ContentRetrieval",
+        config="train/config_amht_v4_stage2_round18_content_retrieval.yaml",
+        color="#14532d",
+        marker="D",
+    ),
     "amht_v4_stage2_round17_state_memory_diag": ModelSpec(
         key="amht_v4_stage2_round17_state_memory_diag",
         label="AMHT-V4-Stage2-R17-StateMemory-Diag",
@@ -294,6 +301,13 @@ MODEL_SPECS = {
         color="#f472b6",
         marker="s",
     ),
+    "transformer_v4_stage2_round18_content_retrieval_baseline": ModelSpec(
+        key="transformer_v4_stage2_round18_content_retrieval_baseline",
+        label="Transformer-ContentRetrieval",
+        config="train/config_transformer_v4_stage2_round18_content_retrieval_baseline.yaml",
+        color="#fb7185",
+        marker="s",
+    ),
     "transformer_v4_stage2_round14_baseline": ModelSpec(
         key="transformer_v4_stage2_round14_baseline",
         label="Transformer",
@@ -399,6 +413,13 @@ MODEL_SPECS = {
         color="#14b8a6",
         marker="D",
     ),
+    "mamba3_hybrid_v4_stage2_round18_content_retrieval_baseline": ModelSpec(
+        key="mamba3_hybrid_v4_stage2_round18_content_retrieval_baseline",
+        label="Mamba-3-Inspired Hybrid-ContentRetrieval",
+        config="train/config_mamba3_hybrid_v4_stage2_round18_content_retrieval_baseline.yaml",
+        color="#0d9488",
+        marker="D",
+    ),
     "mamba3_hybrid_v4_stage2_round14_baseline": ModelSpec(
         key="mamba3_hybrid_v4_stage2_round14_baseline",
         label="Mamba-3-Inspired Hybrid",
@@ -463,6 +484,78 @@ def materialize_eval_config(base_config_path: Path, overrides: dict, output_path
 
 
 PRESETS = {
+    "stage2_round18_content_retrieval_t4_validate": {
+        "models": [
+            "amht_v4_stage2_round18_content_retrieval",
+            "transformer_v4_stage2_round18_content_retrieval_baseline",
+            "mamba3_hybrid_v4_stage2_round18_content_retrieval_baseline",
+        ],
+        "seeds": [42, 43, 44],
+        "seq_len": 16384,
+        "steps_scale": 4.0,
+        "warmup_steps": 1,
+        "benchmark_steps": 1,
+        "eval_task": "all",
+        "niah_seq_len": 16384,
+        "eval_config_overrides": {
+            "evaluation": {
+                "niah": {
+                    "batch_size": 1,
+                    "repeats": 2,
+                },
+            },
+        },
+    },
+    "stage2_round18_content_retrieval_t4": {
+        "models": [
+            "amht_v4_stage2_round18_content_retrieval",
+            "transformer_v4_stage2_round18_content_retrieval_baseline",
+            "mamba3_hybrid_v4_stage2_round18_content_retrieval_baseline",
+        ],
+        "seeds": [42],
+        "seq_len": 16384,
+        "steps_scale": 4.0,
+        "warmup_steps": 1,
+        "benchmark_steps": 1,
+        "eval_task": "all",
+        "niah_seq_len": 16384,
+        "eval_config_overrides": {
+            "evaluation": {
+                "niah": {
+                    "batch_size": 1,
+                    "repeats": 2,
+                },
+            },
+        },
+    },
+    "stage2_round18_content_retrieval_validate": {
+        "models": [
+            "amht_v4_stage2_round18_content_retrieval",
+            "transformer_v4_stage2_round18_content_retrieval_baseline",
+            "mamba3_hybrid_v4_stage2_round18_content_retrieval_baseline",
+        ],
+        "seeds": [42, 43, 44],
+        "seq_len": 16384,
+        "steps_scale": 8.0,
+        "warmup_steps": 1,
+        "benchmark_steps": 2,
+        "eval_task": "all",
+        "niah_seq_len": 32768,
+    },
+    "stage2_round18_content_retrieval": {
+        "models": [
+            "amht_v4_stage2_round18_content_retrieval",
+            "transformer_v4_stage2_round18_content_retrieval_baseline",
+            "mamba3_hybrid_v4_stage2_round18_content_retrieval_baseline",
+        ],
+        "seeds": [42],
+        "seq_len": 16384,
+        "steps_scale": 8.0,
+        "warmup_steps": 1,
+        "benchmark_steps": 2,
+        "eval_task": "all",
+        "niah_seq_len": 32768,
+    },
     "stage2_round17_state_memory_diag_t4_validate": {
         "models": [
             "amht_v4_stage2_round17_state_memory_diag",

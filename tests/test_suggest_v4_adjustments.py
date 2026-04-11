@@ -301,6 +301,38 @@ class SuggestV4AdjustmentsTests(unittest.TestCase):
         self.assertIn("Validate this diagnostic next and add an AMHT memory-off ablation", note)
         self.assertIn("Run `stage2_round17_state_memory_diag_validate`", note)
 
+    def test_round18_content_retrieval_note_uses_corrected_retrieval_guidance(self) -> None:
+        summary = {
+            "models": {
+                "amht_v4_stage2_round18_content_retrieval": {
+                    "label": "AMHT-V4-Stage2-R18-ContentRetrieval",
+                    "niah": {"mean_accuracy": {"mean": 0.61, "std": 0.0}},
+                    "state_tracking": {"mean_accuracy": {"mean": 0.49, "std": 0.0}},
+                    "throughput": {"tokens_per_second": {"mean": 210000.0, "std": 0.0}},
+                },
+                "transformer_v4_stage2_round18_content_retrieval_baseline": {
+                    "label": "Transformer-ContentRetrieval",
+                    "niah": {"mean_accuracy": {"mean": 0.56, "std": 0.0}},
+                    "state_tracking": {"mean_accuracy": {"mean": 0.50, "std": 0.0}},
+                    "throughput": {"tokens_per_second": {"mean": 190000.0, "std": 0.0}},
+                },
+                "mamba3_hybrid_v4_stage2_round18_content_retrieval_baseline": {
+                    "label": "Mamba-ContentRetrieval",
+                    "niah": {"mean_accuracy": {"mean": 0.54, "std": 0.0}},
+                    "state_tracking": {"mean_accuracy": {"mean": 0.48, "std": 0.0}},
+                    "throughput": {"tokens_per_second": {"mean": 180000.0, "std": 0.0}},
+                },
+            }
+        }
+
+        best = MODULE.pick_best_amht(summary)
+        note = MODULE.build_note(summary)
+
+        self.assertEqual(best, "amht_v4_stage2_round18_content_retrieval")
+        self.assertIn("fixes the old retrieval leakage", note)
+        self.assertIn("Run `stage2_round18_content_retrieval_validate`", note)
+        self.assertIn("corrected retrieval benchmark", note)
+
 
 if __name__ == "__main__":
     unittest.main()

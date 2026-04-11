@@ -23,6 +23,63 @@ pdflatex paper.tex
 pdflatex paper.tex
 ```
 
+## Two Commands
+
+For iterative work on Colab, use one command for train+benchmark and one for paper generation.
+
+Training and benchmark only:
+
+```bash
+bash scripts/run_train_benchmark.sh
+```
+
+Paper bundle from existing runs:
+
+```bash
+bash scripts/run_paper.sh
+```
+
+These wrappers default to:
+
+- `scripts/run_train_benchmark.sh` -> `--preset stage1_tuning --skip-figures`
+- `scripts/run_paper.sh` -> `--preset paper_v4 --skip-train --skip-eval`
+
+Current preset coverage:
+
+- `stage1_tuning` runs `AMHT-V4-Fast`, `Transformer`, and `Mamba-3-Inspired Hybrid` with full comparison summary for adjustment work
+- `colab_quick` runs `AMHT-V4-Fast`, `Transformer`, and `Mamba-3-Inspired Hybrid`
+- `paper_v4` runs `AMHT-V4-Fast`, `AMHT-V4-Accurate`, `Transformer`, and `Mamba-3-Inspired Hybrid`
+
+Naming note for paper artifacts:
+
+- use `Mamba-3-inspired hybrid baseline` or `Mamba-3-Inspired Hybrid` in tables and figures
+- do not present this baseline as an exact reproduction of the original Mamba-3 paper
+
+You can override the preset, device, and output directory with environment variables:
+
+```bash
+AMHT_PRESET=stage1_tuning AMHT_DEVICE=cuda AMHT_OUTDIR=paper_runs/stage1_tuning bash scripts/run_train_benchmark.sh
+AMHT_PRESET=paper_v4 AMHT_DEVICE=cuda AMHT_OUTDIR=paper_runs/paper_v4 bash scripts/run_paper.sh
+```
+
+The underlying Python entrypoint remains:
+
+```bash
+python3 scripts/run_colab_paper.py ...
+```
+
+Paper generation produces:
+
+- per-seed checkpoints and raw train/eval outputs under `paper_runs/.../runs/`
+- `summary.md` and `paper_tables.tex` under `paper_runs/.../report/`
+- paper figures under `paper_runs/.../figures/`
+
+Stage-one tuning additionally produces:
+
+- `report/summary.json`
+- `report/summary.md`
+- `report/adjustments.md`
+
 ## Generate Figures
 
 The manuscript includes figures automatically if the expected PDF files exist under `figures/`.
@@ -47,8 +104,9 @@ Before submission, the highest-value improvements are:
 
 1. add author/affiliation information
 2. replace placeholder related-work citations with a fuller bibliography if needed
-3. add architecture and benchmark figures
+3. sync generated paper figures and tables into the final paper build directory
 4. add one real-text benchmark or one more baseline family
+5. keep the baseline naming precise so the paper does not imply an exact Mamba-3 reproduction
 
 ## Figure Roadmap
 
