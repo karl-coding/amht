@@ -272,6 +272,35 @@ class SuggestV4AdjustmentsTests(unittest.TestCase):
         self.assertIn("## AMHT vs Transformer", note)
         self.assertIn("Validate the memory-on-state pivot with extra seeds", note)
 
+    def test_round17_state_memory_diag_note_uses_round17_baselines(self) -> None:
+        summary = {
+            "models": {
+                "amht_v4_stage2_round17_state_memory_diag": {
+                    "label": "AMHT-V4-Stage2-R17-StateMemory-Diag",
+                    "state_tracking": {"mean_accuracy": {"mean": 0.61, "std": 0.0}},
+                    "throughput": {"tokens_per_second": {"mean": 210000.0, "std": 0.0}},
+                },
+                "transformer_v4_stage2_round17_state_memory_diag_baseline": {
+                    "label": "Transformer-StateMemory-Diag",
+                    "state_tracking": {"mean_accuracy": {"mean": 0.54, "std": 0.0}},
+                    "throughput": {"tokens_per_second": {"mean": 250000.0, "std": 0.0}},
+                },
+                "mamba3_hybrid_v4_stage2_round17_state_memory_diag_baseline": {
+                    "label": "Mamba-StateMemory-Diag",
+                    "state_tracking": {"mean_accuracy": {"mean": 0.53, "std": 0.0}},
+                    "throughput": {"tokens_per_second": {"mean": 220000.0, "std": 0.0}},
+                },
+            }
+        }
+
+        best = MODULE.pick_best_amht(summary)
+        note = MODULE.build_note(summary)
+
+        self.assertEqual(best, "amht_v4_stage2_round17_state_memory_diag")
+        self.assertIn("latent-memory diagnosis", note)
+        self.assertIn("Validate this diagnostic next and add an AMHT memory-off ablation", note)
+        self.assertIn("Run `stage2_round17_state_memory_diag_validate`", note)
+
 
 if __name__ == "__main__":
     unittest.main()

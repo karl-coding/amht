@@ -63,6 +63,7 @@ def pick_best_amht(summary: dict) -> str | None:
     preferred_order = [
         key
         for key in (
+            "amht_v4_stage2_round17_state_memory_diag",
             "amht_v4_stage2_round16",
             "amht_v4_stage2_round15",
             "amht_v4_stage2_round14",
@@ -145,7 +146,10 @@ def build_note(summary: dict) -> str:
             "mamba3_hybrid_v4_stage2_round13_baseline",
         )
     )
-    diagnostic_mode = best_amht is not None and "state_tracking_diag" in best_amht
+    diagnostic_mode = best_amht is not None and (
+        "state_tracking_diag" in best_amht or "state_memory_diag" in best_amht
+    )
+    state_memory_diag_mode = best_amht is not None and "state_memory_diag" in best_amht
     validated_stage2_mode = (
         best_amht is not None and "stage2_round13" in best_amht and round13_validation_complete
     )
@@ -178,6 +182,8 @@ def build_note(summary: dict) -> str:
             (
                 key
                 for key in (
+                    "transformer_v4_stage2_round17_state_memory_diag_baseline",
+                    "transformer_v4_stage2_round11_state_tracking_diag_baseline",
                     "transformer_v4_stage2_round7_state_tracking_diag_baseline",
                     "transformer_v4_stage2_round7_retry_baseline",
                     "transformer_v4_stage2_round7_baseline",
@@ -192,6 +198,8 @@ def build_note(summary: dict) -> str:
             (
                 key
                 for key in (
+                    "mamba3_hybrid_v4_stage2_round17_state_memory_diag_baseline",
+                    "mamba3_hybrid_v4_stage2_round11_state_tracking_diag_baseline",
                     "mamba3_hybrid_v4_stage2_round7_state_tracking_diag_baseline",
                     "mamba3_hybrid_v4_stage2_round7_retry_baseline",
                     "mamba3_hybrid_v4_stage2_round7_baseline",
@@ -202,8 +210,12 @@ def build_note(summary: dict) -> str:
             ),
             None,
         )
-        intro = "Focus on recurrent-state diagnosis first. Mixed retrieval training should only be retried after the pure state-tracking path is numerically stable."
-        favorable_line = "- This diagnostic is favorable: AMHT is stable and already shows a clear state-tracking edge before mixed training is reintroduced."
+        if state_memory_diag_mode:
+            intro = "Focus on latent-memory diagnosis first. This round removes retrieval training and asks whether AMHT gains a real state-tracking edge once memory is the only AMHT-specific path left active."
+            favorable_line = "- This diagnostic is favorable: AMHT shows a clear pure state-tracking edge under the memory-on-state setup, so the latent-memory path is earning its keep."
+        else:
+            intro = "Focus on recurrent-state diagnosis first. Mixed retrieval training should only be retried after the pure state-tracking path is numerically stable."
+            favorable_line = "- This diagnostic is favorable: AMHT is stable and already shows a clear state-tracking edge before mixed training is reintroduced."
     elif state_memory_mode:
         stage_label = "2"
         transformer = next(
@@ -512,7 +524,25 @@ def build_note(summary: dict) -> str:
                 ]
             )
         elif diagnostic_mode:
-            if state_gap is not None and state_gap >= 0.03:
+            if state_memory_diag_mode and state_gap is not None and state_gap >= 0.03:
+                block.extend(
+                    [
+                        "Recommendation:",
+                        "- The pure state-memory diagnostic is favorable: AMHT now shows the intended state-sensitive edge without retrieval training.",
+                        "- Validate this diagnostic next and add an AMHT memory-off ablation before reintroducing mixed retrieval.",
+                        "",
+                    ]
+                )
+            elif state_memory_diag_mode:
+                block.extend(
+                    [
+                        "Recommendation:",
+                        "- This pure state-memory diagnostic does not yet show the intended AMHT advantage over the baselines.",
+                        "- Do not reintroduce mixed retrieval yet; first decide whether the memory-on-state path needs a simpler diagnostic or should be retired.",
+                        "",
+                    ]
+                )
+            elif state_gap is not None and state_gap >= 0.03:
                 block.extend(
                     [
                         "Recommendation:",
@@ -664,13 +694,23 @@ def build_note(summary: dict) -> str:
     )
     if diagnostic_mode:
         lines.extend(
-            [
-                "1. Retry mixed `stage2_round7` now that pure state-tracking is numerically stable.",
-                "2. If mixed training is stable, compare whether retrieval-aligned training lifts state-tracking above chance.",
-                "3. If all three models remain near chance, increase training budget or simplify the benchmark before reading architecture conclusions from it.",
-                "4. Re-open backbone capacity only after the task is stable and informative.",
-                "",
-            ]
+            (
+                [
+                    "1. Run `stage2_round17_state_memory_diag_validate` before any mixed-task retry.",
+                    "2. If AMHT shows a clear edge there, add an AMHT memory-off ablation to verify that latent memory causes the gain.",
+                    "3. Reintroduce retrieval only after the pure memory diagnostic is favorable.",
+                    "4. If AMHT still cannot beat the baselines here, stop memory-axis churn and revisit the benchmark or paper framing.",
+                    "",
+                ]
+                if state_memory_diag_mode
+                else [
+                    "1. Retry mixed `stage2_round7` now that pure state-tracking is numerically stable.",
+                    "2. If mixed training is stable, compare whether retrieval-aligned training lifts state-tracking above chance.",
+                    "3. If all three models remain near chance, increase training budget or simplify the benchmark before reading architecture conclusions from it.",
+                    "4. Re-open backbone capacity only after the task is stable and informative.",
+                    "",
+                ]
+            )
         )
     elif validated_stage2_mode:
         lines.extend(

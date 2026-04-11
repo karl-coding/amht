@@ -35,6 +35,13 @@ class ModelSpec:
 
 
 MODEL_SPECS = {
+    "amht_v4_stage2_round17_state_memory_diag": ModelSpec(
+        key="amht_v4_stage2_round17_state_memory_diag",
+        label="AMHT-V4-Stage2-R17-StateMemory-Diag",
+        config="train/config_amht_v4_stage2_round17_state_memory_diag.yaml",
+        color="#111827",
+        marker="1",
+    ),
     "amht_v4_stage2_round16": ModelSpec(
         key="amht_v4_stage2_round16",
         label="AMHT-V4-Stage2-R16-StateMemory",
@@ -308,6 +315,13 @@ MODEL_SPECS = {
         color="#be185d",
         marker="s",
     ),
+    "transformer_v4_stage2_round17_state_memory_diag_baseline": ModelSpec(
+        key="transformer_v4_stage2_round17_state_memory_diag_baseline",
+        label="Transformer-StateMemory-Diag",
+        config="train/config_transformer_v4_stage2_round17_state_memory_diag_baseline.yaml",
+        color="#f9a8d4",
+        marker="s",
+    ),
     "transformer_v4_stage2_round11_state_tracking_diag_baseline": ModelSpec(
         key="transformer_v4_stage2_round11_state_tracking_diag_baseline",
         label="Transformer-State-Diag",
@@ -406,6 +420,13 @@ MODEL_SPECS = {
         color="#134e4a",
         marker="D",
     ),
+    "mamba3_hybrid_v4_stage2_round17_state_memory_diag_baseline": ModelSpec(
+        key="mamba3_hybrid_v4_stage2_round17_state_memory_diag_baseline",
+        label="Mamba-3-Inspired Hybrid-StateMemory-Diag",
+        config="train/config_mamba3_hybrid_v4_stage2_round17_state_memory_diag_baseline.yaml",
+        color="#5eead4",
+        marker="D",
+    ),
     "mamba3_hybrid_v4_stage2_round11_state_tracking_diag_baseline": ModelSpec(
         key="mamba3_hybrid_v4_stage2_round11_state_tracking_diag_baseline",
         label="Mamba-3-Inspired Hybrid-State-Diag",
@@ -442,6 +463,62 @@ def materialize_eval_config(base_config_path: Path, overrides: dict, output_path
 
 
 PRESETS = {
+    "stage2_round17_state_memory_diag_t4_validate": {
+        "models": [
+            "amht_v4_stage2_round17_state_memory_diag",
+            "transformer_v4_stage2_round17_state_memory_diag_baseline",
+            "mamba3_hybrid_v4_stage2_round17_state_memory_diag_baseline",
+        ],
+        "seeds": [42, 43, 44],
+        "seq_len": 16384,
+        "steps_scale": 4.0,
+        "warmup_steps": 1,
+        "benchmark_steps": 1,
+        "eval_task": "state_tracking",
+        "niah_seq_len": 16384,
+    },
+    "stage2_round17_state_memory_diag_t4": {
+        "models": [
+            "amht_v4_stage2_round17_state_memory_diag",
+            "transformer_v4_stage2_round17_state_memory_diag_baseline",
+            "mamba3_hybrid_v4_stage2_round17_state_memory_diag_baseline",
+        ],
+        "seeds": [42],
+        "seq_len": 16384,
+        "steps_scale": 4.0,
+        "warmup_steps": 1,
+        "benchmark_steps": 1,
+        "eval_task": "state_tracking",
+        "niah_seq_len": 16384,
+    },
+    "stage2_round17_state_memory_diag_validate": {
+        "models": [
+            "amht_v4_stage2_round17_state_memory_diag",
+            "transformer_v4_stage2_round17_state_memory_diag_baseline",
+            "mamba3_hybrid_v4_stage2_round17_state_memory_diag_baseline",
+        ],
+        "seeds": [42, 43, 44],
+        "seq_len": 16384,
+        "steps_scale": 4.0,
+        "warmup_steps": 1,
+        "benchmark_steps": 2,
+        "eval_task": "state_tracking",
+        "niah_seq_len": 16384,
+    },
+    "stage2_round17_state_memory_diag": {
+        "models": [
+            "amht_v4_stage2_round17_state_memory_diag",
+            "transformer_v4_stage2_round17_state_memory_diag_baseline",
+            "mamba3_hybrid_v4_stage2_round17_state_memory_diag_baseline",
+        ],
+        "seeds": [42],
+        "seq_len": 16384,
+        "steps_scale": 4.0,
+        "warmup_steps": 1,
+        "benchmark_steps": 2,
+        "eval_task": "state_tracking",
+        "niah_seq_len": 16384,
+    },
     "stage2_round16_t4_validate": {
         "models": [
             "amht_v4_stage2_round16",

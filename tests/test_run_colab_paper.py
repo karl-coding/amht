@@ -4,6 +4,13 @@ from scripts.run_colab_paper import MODEL_SPECS, PRESETS, deep_merge_dict
 
 
 class RunColabPaperTests(unittest.TestCase):
+    def test_round17_state_memory_diag_presets_and_models_are_registered(self) -> None:
+        self.assertIn("amht_v4_stage2_round17_state_memory_diag", MODEL_SPECS)
+        self.assertIn("transformer_v4_stage2_round17_state_memory_diag_baseline", MODEL_SPECS)
+        self.assertIn("mamba3_hybrid_v4_stage2_round17_state_memory_diag_baseline", MODEL_SPECS)
+        self.assertIn("stage2_round17_state_memory_diag", PRESETS)
+        self.assertIn("stage2_round17_state_memory_diag_t4", PRESETS)
+
     def test_round16_presets_and_models_are_registered(self) -> None:
         self.assertIn("amht_v4_stage2_round16", MODEL_SPECS)
         self.assertIn("transformer_v4_stage2_round16_baseline", MODEL_SPECS)
