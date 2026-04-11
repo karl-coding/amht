@@ -5,6 +5,7 @@ import unittest
 import torch
 
 from data.dataset import MixedDataset, StateTrackingDataset
+from eval.state_tracking import state_tracking_model_kwargs
 from model.amht import AMHTModel
 
 
@@ -142,6 +143,45 @@ class AMHTStateTrackingBypassTests(unittest.TestCase):
         self.assertEqual(tuple(logits.shape), (2, 8, 64))
         self.assertEqual(float(stats["router_mean"].item()), 0.0)
         self.assertEqual(float(stats["router_selected_ratio"].item()), 0.0)
+
+    def test_state_tracking_eval_runtime_can_enable_memory_without_router_attention(self) -> None:
+        cfg = {
+            "model": {
+                "architecture": "amht",
+                "vocab_size": 64,
+                "dim": 16,
+                "hidden_dim": 32,
+                "layers": 2,
+                "heads": 2,
+                "latent_tokens": 4,
+                "memory_per_layer_io": True,
+                "router_ratio": 0.1,
+                "ssm_state_size": 8,
+                "max_seq_len": 16,
+                "ssm_impl": "surrogate",
+            }
+        }
+        model = AMHTModel(cfg)
+
+        kwargs = state_tracking_model_kwargs(
+            model,
+            {
+                "runtime": {
+                    "memory_enabled": True,
+                    "router_attention_enabled": False,
+                    "router_straight_through_enabled": False,
+                }
+            },
+        )
+
+        self.assertEqual(
+            kwargs,
+            {
+                "router_straight_through_enabled": False,
+                "router_attention_enabled": False,
+                "memory_enabled": True,
+            },
+        )
 
 
 if __name__ == "__main__":

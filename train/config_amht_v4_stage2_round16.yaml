@@ -31,10 +31,10 @@ training:
   batch_size: 1
   micro_batch_size: 1
   steps: 200
-  lr: 0.0003
+  lr: 0.0002
   weight_decay: 0.01
   grad_clip: 1.0
-  max_non_finite_batches: 4
+  max_non_finite_batches: 12
   log_every: 2
   checkpoint_dir: checkpoints
 
@@ -50,8 +50,8 @@ loss:
 data:
   dataset_type: mixed
   mixture:
-    retrieval_weight: 0.60
-    state_tracking_weight: 0.40
+    retrieval_weight: 0.70
+    state_tracking_weight: 0.30
   retrieval:
     key_start: 100
     value_start: 1000
@@ -63,7 +63,7 @@ data:
     task: flipflop
     num_slots: 8
     value_count: 2
-    min_query_gap_tokens: 8192
+    min_query_gap_tokens: 4096
   state_tracking_runtime:
     disable_router_aux: true
     disable_router_straight_through: true
@@ -92,6 +92,8 @@ evaluation:
     num_slots: 8
     value_count: 2
     min_query_gap_tokens: 8192
+    runtime:
+      memory_enabled: true
     batch_size: 1
     forward_batch_size: 1
     repeats: 32

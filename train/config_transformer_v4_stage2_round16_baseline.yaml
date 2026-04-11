@@ -31,8 +31,8 @@ loss:
 data:
   dataset_type: mixed
   mixture:
-    retrieval_weight: 0.60
-    state_tracking_weight: 0.40
+    retrieval_weight: 0.70
+    state_tracking_weight: 0.30
   retrieval:
     key_start: 100
     value_start: 1000
@@ -44,7 +44,7 @@ data:
     task: flipflop
     num_slots: 8
     value_count: 2
-    min_query_gap_tokens: 8192
+    min_query_gap_tokens: 4096
 
 evaluation:
   batch_size: 1

@@ -13,24 +13,30 @@ from data.dataset import build_state_tracking_batch
 from model.amht import AMHTModel
 
 
+def state_tracking_model_kwargs(model, tracking_cfg: dict) -> dict:
+    if not isinstance(model, AMHTModel):
+        return {}
+    runtime_cfg = tracking_cfg.get("runtime", {})
+    return {
+        "router_straight_through_enabled": bool(runtime_cfg.get("router_straight_through_enabled", False)),
+        "router_attention_enabled": bool(runtime_cfg.get("router_attention_enabled", False)),
+        "memory_enabled": bool(runtime_cfg.get("memory_enabled", False)),
+    }
+
+
 @torch.no_grad()
 def evaluate_state_tracking_accuracy_chunked(
     model,
     tokens: torch.Tensor,
     expected: torch.Tensor,
     forward_batch_size: int,
+    tracking_cfg: dict,
 ) -> float:
     total_correct = 0
     total_items = 0
     for start in range(0, tokens.size(0), forward_batch_size):
         end = min(start + forward_batch_size, tokens.size(0))
-        model_kwargs = {}
-        if isinstance(model, AMHTModel):
-            model_kwargs = {
-                "router_straight_through_enabled": False,
-                "router_attention_enabled": False,
-                "memory_enabled": False,
-            }
+        model_kwargs = state_tracking_model_kwargs(model, tracking_cfg)
         logits, _ = model(tokens[start:end, :-1], **model_kwargs)
         pred = logits[:, -1].argmax(dim=-1)
         total_correct += int((pred == expected[start:end]).sum().item())
@@ -87,6 +93,7 @@ def benchmark_state_tracking(model, cfg: dict, device: torch.device) -> dict:
                     tokens=tokens,
                     expected=expected,
                     forward_batch_size=forward_batch_size,
+                    tracking_cfg=tracking_cfg,
                 )
             )
         accuracy = mean(seq_scores) if seq_scores else 0.0
