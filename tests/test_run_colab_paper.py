@@ -4,6 +4,11 @@ from scripts.run_colab_paper import MODEL_SPECS, PRESETS, deep_merge_dict
 
 
 class RunColabPaperTests(unittest.TestCase):
+    def test_round19_content_path_presets_and_models_are_registered(self) -> None:
+        self.assertIn("amht_v4_stage2_round19_content_path", MODEL_SPECS)
+        self.assertIn("stage2_round19_content_path", PRESETS)
+        self.assertIn("stage2_round19_content_path_t4", PRESETS)
+
     def test_round18_content_retrieval_presets_and_models_are_registered(self) -> None:
         self.assertIn("amht_v4_stage2_round18_content_retrieval", MODEL_SPECS)
         self.assertIn("transformer_v4_stage2_round18_content_retrieval_baseline", MODEL_SPECS)

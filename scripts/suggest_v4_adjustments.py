@@ -63,6 +63,7 @@ def pick_best_amht(summary: dict) -> str | None:
     preferred_order = [
         key
         for key in (
+            "amht_v4_stage2_round19_content_path",
             "amht_v4_stage2_round18_content_retrieval",
             "amht_v4_stage2_round17_state_memory_diag",
             "amht_v4_stage2_round16",
@@ -150,7 +151,10 @@ def build_note(summary: dict) -> str:
     diagnostic_mode = best_amht is not None and (
         "state_tracking_diag" in best_amht or "state_memory_diag" in best_amht
     )
-    content_retrieval_mode = best_amht is not None and "stage2_round18_content_retrieval" in best_amht
+    content_path_mode = best_amht is not None and "stage2_round19_content_path" in best_amht
+    content_retrieval_mode = best_amht is not None and any(
+        tag in best_amht for tag in ("stage2_round18_content_retrieval", "stage2_round19_content_path")
+    )
     state_memory_diag_mode = best_amht is not None and "state_memory_diag" in best_amht
     validated_stage2_mode = (
         best_amht is not None and "stage2_round13" in best_amht and round13_validation_complete
@@ -178,12 +182,13 @@ def build_note(summary: dict) -> str:
         )
     )
 
-    if content_retrieval_mode:
+    if content_path_mode:
         stage_label = "2"
         transformer = next(
             (
                 key
                 for key in (
+                    "transformer_v4_stage2_round19_content_path_baseline",
                     "transformer_v4_stage2_round18_content_retrieval_baseline",
                     "transformer_v4_stage2_round16_baseline",
                     "transformer_v4_stage2_round15_baseline",
@@ -205,6 +210,55 @@ def build_note(summary: dict) -> str:
             (
                 key
                 for key in (
+                    "mamba3_hybrid_v4_stage2_round19_content_path_baseline",
+                    "mamba3_hybrid_v4_stage2_round18_content_retrieval_baseline",
+                    "mamba3_hybrid_v4_stage2_round16_baseline",
+                    "mamba3_hybrid_v4_stage2_round15_baseline",
+                    "mamba3_hybrid_v4_stage2_round13_baseline",
+                    "mamba3_hybrid_v4_stage2_round14_baseline",
+                    "mamba3_hybrid_v4_stage2_round11_retry_baseline",
+                    "mamba3_hybrid_v4_stage2_round11_baseline",
+                    "mamba3_hybrid_v4_stage2_round10_baseline",
+                    "mamba3_hybrid_v4_stage2_round7_retry_baseline",
+                    "mamba3_hybrid_v4_stage2_round7_baseline",
+                    "mamba3_hybrid_v4_stage2_round4_baseline",
+                    "mamba3_hybrid_v4_stage2_baseline",
+                )
+                if key in models
+            ),
+            None,
+        )
+        intro = "This round keeps the corrected retrieval benchmark fixed and tunes only the AMHT content path. The intent is to import Transformer-style lookup discipline before reopening recurrent-capacity changes."
+        favorable_line = "- This content-path sweep is favorable: AMHT improves leakage-free retrieval without giving away its throughput edge."
+    elif content_retrieval_mode:
+        stage_label = "2"
+        transformer = next(
+            (
+                key
+                for key in (
+                    "transformer_v4_stage2_round19_content_path_baseline",
+                    "transformer_v4_stage2_round18_content_retrieval_baseline",
+                    "transformer_v4_stage2_round16_baseline",
+                    "transformer_v4_stage2_round15_baseline",
+                    "transformer_v4_stage2_round13_baseline",
+                    "transformer_v4_stage2_round14_baseline",
+                    "transformer_v4_stage2_round11_retry_baseline",
+                    "transformer_v4_stage2_round11_baseline",
+                    "transformer_v4_stage2_round10_baseline",
+                    "transformer_v4_stage2_round7_retry_baseline",
+                    "transformer_v4_stage2_round7_baseline",
+                    "transformer_v4_stage2_round4_baseline",
+                    "transformer_v4_stage2_baseline",
+                )
+                if key in models
+            ),
+            None,
+        )
+        mamba_ref = next(
+            (
+                key
+                for key in (
+                    "mamba3_hybrid_v4_stage2_round19_content_path_baseline",
                     "mamba3_hybrid_v4_stage2_round18_content_retrieval_baseline",
                     "mamba3_hybrid_v4_stage2_round16_baseline",
                     "mamba3_hybrid_v4_stage2_round15_baseline",
@@ -746,6 +800,104 @@ def build_note(summary: dict) -> str:
     if mamba_ref is not None:
         lines.extend(compare_block(mamba_ref, "Mamba-3-Inspired Hybrid"))
 
+    quality_deficit = any(acc_gap is not None and acc_gap < -quality_tie_tolerance for acc_gap, _ in comparison_gaps)
+    throughput_deficit = any(
+        tps_gap is not None and tps_gap < 0.0 and (acc_gap is None or acc_gap <= quality_tie_tolerance)
+        for acc_gap, tps_gap in comparison_gaps
+    )
+    favorable_tradeoff = bool(comparison_gaps) and all(
+        acc_gap is not None and acc_gap >= -quality_tie_tolerance and tps_gap is not None and tps_gap > 0.0
+        for acc_gap, tps_gap in comparison_gaps
+    )
+
+    if content_retrieval_mode:
+        goal_line = (
+            "Beat the baselines on leakage-free retrieval quality while keeping the AMHT design sparse, memory-efficient, and near `router_ratio ~ 0.1`."
+        )
+        if quality_deficit:
+            status_line = (
+                "AMHT satisfies the sparse-efficiency constraints but misses the corrected retrieval quality target against the baselines."
+            )
+            design_lines = [
+                "- Transformer-derived content axis: improve explicit lookup first with `block_size`, `latent_tokens`, `router_score_margin`, `router_score_weight`, and `router_feature_sources`.",
+                "- Mamba-derived recurrent axis: only after retrieval is competitive, test `ssm_state_size` first and then `ssm_conv_kernel`, while keeping `ssm_complex: true`.",
+                "- AMHT rule: do not mix content-path and recurrent-path changes in the same round; keep one path frozen so the result stays interpretable.",
+            ]
+        elif favorable_tradeoff:
+            status_line = (
+                "AMHT is aligned with the corrected retrieval goal: competitive-or-better quality with a throughput edge under sparse routing."
+            )
+            design_lines = [
+                "- Transformer-derived content axis is good enough for now; freeze it and validate across seeds before reopening retrieval-path tuning.",
+                "- Mamba-derived recurrent axis stays secondary until validation says there is still an unexplained state or continuation gap.",
+                "- AMHT rule: spend the throughput headroom only after the quality win is reproducible.",
+            ]
+        else:
+            status_line = (
+                "AMHT is partially aligned: throughput is strong, but corrected retrieval quality is only competitive or still statistically weak."
+            )
+            design_lines = [
+                "- Transformer-derived content axis comes first because corrected retrieval is the decision gate in this round.",
+                "- Mamba-derived recurrent axis should stay frozen until the corrected retrieval result is validated and clearly informative.",
+                "- AMHT rule: validate before opening a new axis, then tune only the losing path.",
+            ]
+    elif diagnostic_mode or state_memory_mode:
+        goal_line = (
+            "Show a real state-sensitive gain from the recurrent-plus-memory design without breaking sparse routing or drifting toward dense attention."
+        )
+        if favorable_tradeoff:
+            status_line = (
+                "AMHT is directionally aligned: the diagnostic is favorable and the hybrid path is earning its complexity."
+            )
+        else:
+            status_line = (
+                "AMHT is not yet clearly aligned: the diagnostic still needs to separate the recurrent-plus-memory path from the baselines."
+            )
+        design_lines = [
+            "- Mamba-derived recurrent axis comes first here: use `ssm_state_size`, then `ssm_conv_kernel`, while keeping `ssm_complex: true`.",
+            "- Transformer-derived content mixing stays a guardrail only; do not widen attention to compensate for a weak recurrent signal.",
+            "- AMHT rule: reopen router or latent-memory tuning only after the recurrent diagnostic is informative.",
+        ]
+    else:
+        goal_line = (
+            "Beat or match the baselines on the active quality target while preserving sparse routed attention, memory efficiency, and `router_ratio ~ 0.1`."
+        )
+        if favorable_tradeoff:
+            status_line = "AMHT is currently aligned with the goal on the measured tradeoff."
+        elif quality_deficit and not throughput_deficit:
+            status_line = "AMHT has throughput headroom but is still short on quality."
+        elif throughput_deficit and not quality_deficit:
+            status_line = "AMHT is spending compute without a clear quality return."
+        else:
+            status_line = "AMHT is in a mixed state: the benchmark is not yet giving a clean architecture decision."
+        design_lines = [
+            "- Use Transformer as the reference for explicit content lookup and Mamba-3-inspired hybrid as the reference for recurrent efficiency.",
+            "- If retrieval or lookup quality is short, tune the AMHT content path first with `block_size`, `latent_tokens`, `router_score_margin`, `router_score_weight`, and `router_feature_sources`.",
+            "- If state-sensitive behavior is short, tune the AMHT recurrent path first with `ssm_state_size`, `ssm_conv_kernel`, and `ssm_complex`.",
+        ]
+
+    lines.extend(
+        [
+            "## Goal Alignment",
+            "",
+            f"- Primary goal: {goal_line}",
+            f"- Current status: {status_line}",
+            "- Design constraint: keep the model meaningfully AMHT. Do not widen into dense full-sequence attention just to imitate the baselines.",
+            "",
+            "## Harness Engineering Research Circle",
+            "",
+            "- Keep AMHT, Transformer, and Mamba-3-inspired baselines in every decision round on the same benchmark and budget.",
+            "- Treat Transformer as the content-lookup reference and Mamba-3-inspired hybrid as the recurrent-efficiency reference.",
+            "- Every AMHT experiment should name one borrowed advantage and one protected constraint before the run starts.",
+            "- Reject changes that break `router_selected_ratio ~ 0.1`, materially raise dense attention cost, or mix multiple architecture axes in one unexplained jump.",
+            "",
+            "## Baseline-Informed Design Axes",
+            "",
+            *design_lines,
+            "",
+        ]
+    )
+
     lines.extend(
         [
             "## Mamba-3 Reference Axes",
@@ -758,22 +910,23 @@ def build_note(summary: dict) -> str:
             "",
         ]
     )
-    quality_deficit = any(acc_gap is not None and acc_gap < -quality_tie_tolerance for acc_gap, _ in comparison_gaps)
-    throughput_deficit = any(
-        tps_gap is not None and tps_gap < 0.0 and (acc_gap is None or acc_gap <= quality_tie_tolerance)
-        for acc_gap, tps_gap in comparison_gaps
-    )
-    favorable_tradeoff = bool(comparison_gaps) and all(
-        acc_gap is not None and acc_gap >= -quality_tie_tolerance and tps_gap is not None and tps_gap > 0.0
-        for acc_gap, tps_gap in comparison_gaps
-    )
-    if content_retrieval_mode:
+    if content_path_mode:
+        lines.extend(
+            [
+                "1. Run `stage2_round19_content_path_validate` before making any new architectural change.",
+                "2. If AMHT is still behind on corrected retrieval, keep the SSM path fixed and continue only the content-path sweep: `block_size`, `latent_tokens`, `router_score_margin`, `router_score_weight`, and `router_feature_sources`.",
+                "3. Only after corrected retrieval reaches parity should you open a Mamba-inspired recurrent sweep with `ssm_state_size` and then `ssm_conv_kernel`.",
+                "4. If the content-path sweep still loses on leakage-free retrieval, stop making a retrieval-specific AMHT claim and revisit the paper framing.",
+                "",
+            ]
+        )
+    elif content_retrieval_mode:
         lines.extend(
             [
                 "1. Run `stage2_round18_content_retrieval_validate` before making any new architectural change.",
-                "2. Keep the round13/18 backbone fixed so the corrected retrieval benchmark isolates benchmark quality instead of architecture churn.",
-                "3. Use corrected retrieval as the main decision gate; treat old saturated `NIAH` results only as historical context.",
-                "4. If AMHT still cannot beat the baselines on leakage-free retrieval, stop claiming a retrieval-specific AMHT advantage and revisit the paper framing.",
+                "2. If the corrected retrieval gap still favors the baselines, run a Transformer-inspired AMHT content-path sweep first: `block_size`, `latent_tokens`, `router_score_margin`, `router_score_weight`, and `router_feature_sources`.",
+                "3. Only after retrieval is competitive, run a Mamba-inspired recurrent sweep: `ssm_state_size` first, then `ssm_conv_kernel`, while keeping `ssm_complex: true`.",
+                "4. Use corrected retrieval as the main decision gate; if AMHT still cannot beat the baselines there, stop claiming a retrieval-specific AMHT advantage and revisit the paper framing.",
                 "",
             ]
         )

@@ -332,6 +332,89 @@ class SuggestV4AdjustmentsTests(unittest.TestCase):
         self.assertIn("fixes the old retrieval leakage", note)
         self.assertIn("Run `stage2_round18_content_retrieval_validate`", note)
         self.assertIn("corrected retrieval benchmark", note)
+        self.assertIn("## Goal Alignment", note)
+        self.assertIn("## Harness Engineering Research Circle", note)
+        self.assertIn("Treat Transformer as the content-lookup reference", note)
+
+    def test_round18_content_retrieval_loss_points_to_transformer_then_mamba_axes(self) -> None:
+        summary = {
+            "models": {
+                "amht_v4_stage2_round18_content_retrieval": {
+                    "label": "AMHT-V4-Stage2-R18-ContentRetrieval",
+                    "niah": {"mean_accuracy": {"mean": 0.0, "std": 0.0}},
+                    "state_tracking": {"mean_accuracy": {"mean": 0.0, "std": 0.0}},
+                    "throughput": {"tokens_per_second": {"mean": 76564.89, "std": 0.0}},
+                },
+                "transformer_v4_stage2_round18_content_retrieval_baseline": {
+                    "label": "Transformer-ContentRetrieval",
+                    "niah": {"mean_accuracy": {"mean": 0.1429, "std": 0.0}},
+                    "state_tracking": {"mean_accuracy": {"mean": 0.0, "std": 0.0}},
+                    "throughput": {"tokens_per_second": {"mean": 55426.01, "std": 0.0}},
+                },
+                "mamba3_hybrid_v4_stage2_round18_content_retrieval_baseline": {
+                    "label": "Mamba-ContentRetrieval",
+                    "niah": {"mean_accuracy": {"mean": 0.1429, "std": 0.0}},
+                    "state_tracking": {"mean_accuracy": {"mean": 0.0, "std": 0.0}},
+                    "throughput": {"tokens_per_second": {"mean": 60599.43, "std": 0.0}},
+                },
+            }
+        }
+
+        note = MODULE.build_note(summary)
+
+        self.assertIn(
+            "AMHT satisfies the sparse-efficiency constraints but misses the corrected retrieval quality target against the baselines.",
+            note,
+        )
+        self.assertIn(
+            "Transformer-derived content axis: improve explicit lookup first with `block_size`, `latent_tokens`, `router_score_margin`, `router_score_weight`, and `router_feature_sources`.",
+            note,
+        )
+        self.assertIn(
+            "Mamba-derived recurrent axis: only after retrieval is competitive, test `ssm_state_size` first and then `ssm_conv_kernel`, while keeping `ssm_complex: true`.",
+            note,
+        )
+        self.assertIn(
+            "If the corrected retrieval gap still favors the baselines, run a Transformer-inspired AMHT content-path sweep first",
+            note,
+        )
+        self.assertIn(
+            "Only after retrieval is competitive, run a Mamba-inspired recurrent sweep",
+            note,
+        )
+
+    def test_round19_content_path_note_uses_content_path_validation_order(self) -> None:
+        summary = {
+            "models": {
+                "amht_v4_stage2_round19_content_path": {
+                    "label": "AMHT-V4-Stage2-R19-ContentPath",
+                    "niah": {"mean_accuracy": {"mean": 0.11, "std": 0.0}},
+                    "state_tracking": {"mean_accuracy": {"mean": 0.0, "std": 0.0}},
+                    "throughput": {"tokens_per_second": {"mean": 73000.0, "std": 0.0}},
+                },
+                "transformer_v4_stage2_round18_content_retrieval_baseline": {
+                    "label": "Transformer-ContentRetrieval",
+                    "niah": {"mean_accuracy": {"mean": 0.1429, "std": 0.0}},
+                    "state_tracking": {"mean_accuracy": {"mean": 0.0, "std": 0.0}},
+                    "throughput": {"tokens_per_second": {"mean": 55426.01, "std": 0.0}},
+                },
+                "mamba3_hybrid_v4_stage2_round18_content_retrieval_baseline": {
+                    "label": "Mamba-ContentRetrieval",
+                    "niah": {"mean_accuracy": {"mean": 0.1429, "std": 0.0}},
+                    "state_tracking": {"mean_accuracy": {"mean": 0.0, "std": 0.0}},
+                    "throughput": {"tokens_per_second": {"mean": 60599.43, "std": 0.0}},
+                },
+            }
+        }
+
+        best = MODULE.pick_best_amht(summary)
+        note = MODULE.build_note(summary)
+
+        self.assertEqual(best, "amht_v4_stage2_round19_content_path")
+        self.assertIn("tunes only the AMHT content path", note)
+        self.assertIn("Run `stage2_round19_content_path_validate`", note)
+        self.assertIn("keep the SSM path fixed and continue only the content-path sweep", note)
+        self.assertIn("Only after corrected retrieval reaches parity should you open a Mamba-inspired recurrent sweep", note)
 
 
 if __name__ == "__main__":
