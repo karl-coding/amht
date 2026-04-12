@@ -31,9 +31,10 @@ training:
   batch_size: 1
   micro_batch_size: 1
   steps: 200
-  lr: 0.0003
+  lr: 0.00025
   weight_decay: 0.01
   grad_clip: 1.0
+  max_non_finite_batches: 12
   log_every: 2
   checkpoint_dir: checkpoints
 
