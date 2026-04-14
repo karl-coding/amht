@@ -415,6 +415,9 @@ class SuggestV4AdjustmentsTests(unittest.TestCase):
         self.assertIn("Run `stage2_round19_content_path_validate`", note)
         self.assertIn("keep the SSM path fixed and continue only the content-path sweep", note)
         self.assertIn("Only after corrected retrieval reaches parity should you open a Mamba-inspired recurrent sweep", note)
+        self.assertIn("## 中文结论（自动生成）", note)
+        self.assertIn("### Round19 结论", note)
+        self.assertIn("先运行 `stage2_round19_content_path_validate`", note)
 
 
 if __name__ == "__main__":

@@ -810,6 +810,19 @@ def build_note(summary: dict) -> str:
         for acc_gap, tps_gap in comparison_gaps
     )
 
+    def zh_comparison_line(target_key: str | None, target_title: str) -> list[str]:
+        if target_key is None or target_key not in models:
+            return []
+        target_acc = metric(summary, target_key, "niah", "mean_accuracy")
+        target_state_acc = metric(summary, target_key, "state_tracking", "mean_accuracy")
+        target_tps = metric(summary, target_key, "throughput", "tokens_per_second")
+        acc_gap = None if best_acc is None or target_acc is None else best_acc - target_acc
+        state_gap = None if best_state_acc is None or target_state_acc is None else best_state_acc - target_state_acc
+        tps_gap = None if best_tps is None or target_tps is None else best_tps - target_tps
+        return [
+            f"- 相对 {target_title} baseline：平均 NIAH 差距 `{fmt(acc_gap)}`，state-tracking 差距 `{fmt(state_gap)}`，吞吐差 `{fmt(tps_gap, 2)}` tok/s。"
+        ]
+
     if content_retrieval_mode:
         goal_line = (
             "Beat the baselines on leakage-free retrieval quality while keeping the AMHT design sparse, memory-efficient, and near `router_ratio ~ 0.1`."
@@ -1098,6 +1111,71 @@ def build_note(summary: dict) -> str:
                         "4. Delay paper-focused freezing until AMHT is consistently ahead on the chosen quality-efficiency target.",
                     ]
                 ),
+                "",
+            ]
+        )
+
+    if content_retrieval_mode:
+        if quality_deficit:
+            zh_round_status = (
+                "当前 corrected retrieval 轮次已经修复了旧 benchmark 的泄漏问题，但 AMHT 仍未稳定超过基线。现阶段证据只支持“稀疏效率优势”，不支持“retrieval 质量优势”结论。"
+            )
+            zh_goal_status = (
+                "AMHT 仍符合稀疏、内存高效、近 `router_ratio ~ 0.1` 的设计约束，但还没有完成 leakage-free retrieval 的主目标。"
+            )
+        elif favorable_tradeoff:
+            zh_round_status = (
+                "当前 corrected retrieval 轮次已经达到可继续推进的状态。AMHT 在无泄漏 retrieval benchmark 上至少与基线持平，同时保留了明显吞吐优势。"
+            )
+            zh_goal_status = (
+                "AMHT 与当前目标一致：在保持稀疏路由和内存效率约束的同时，retrieval 质量已经达到 competitive 或 parity 水平。"
+            )
+        else:
+            zh_round_status = (
+                "当前 corrected retrieval 轮次已经变得有意义，但证据仍然偏弱。AMHT 展现出吞吐优势，不过 retrieval 质量仍需要验证才能下结论。"
+            )
+            zh_goal_status = (
+                "AMHT 目前只部分满足目标：效率优势明确，但 corrected retrieval 上的质量优势还不够稳定。"
+            )
+
+        zh_intro_title = "### Round19 结论" if content_path_mode else "### 修正检索轮次结论"
+        zh_next_steps = (
+            [
+                "1. 先运行 `stage2_round19_content_path_validate`，在不改架构的前提下确认结果是否可复现。",
+                "2. 如果 corrected retrieval 仍落后，只继续做 content-path 单轴搜索：`block_size`、`latent_tokens`、`router_score_margin`、`router_score_weight`、`router_feature_sources`。",
+                "3. 只有在 retrieval 达到 parity 后，才开启 Mamba-inspired recurrent sweep，优先顺序是 `ssm_state_size`，然后才是 `ssm_conv_kernel`。",
+                "4. 如果 content-path 方向最终仍无法稳定赢过 baseline，就停止 retrieval-specific AMHT claim，回到更保守的 paper framing。",
+            ]
+            if content_path_mode
+            else [
+                "1. 先运行 `stage2_round18_content_retrieval_validate`，在不改架构的前提下确认 corrected retrieval 结果是否可复现。",
+                "2. 如果 corrected retrieval 仍落后，只继续做 Transformer-inspired content-path 单轴搜索：`block_size`、`latent_tokens`、`router_score_margin`、`router_score_weight`、`router_feature_sources`。",
+                "3. 只有在 retrieval 达到 competitive 之后，才开启 Mamba-inspired recurrent sweep，优先顺序是 `ssm_state_size`，然后才是 `ssm_conv_kernel`。",
+                "4. 如果 corrected retrieval 仍不能超过 baseline，就停止 retrieval-specific AMHT claim，并回到更保守的论文表述。",
+            ]
+        )
+
+        lines.extend(
+            [
+                "## 中文结论（自动生成）",
+                "",
+                zh_intro_title,
+                "",
+                zh_round_status,
+                "状态跟踪结果仍未提供更强记忆能力的区分证据，因此当前轮次主要支持“retrieval 质量与吞吐折中”的结论，而不支持更广义的 latent-memory 或通用 long-context memory 声明。",
+                "",
+                *zh_comparison_line(transformer, "Transformer"),
+                *zh_comparison_line(mamba_ref, "Mamba-3-inspired hybrid"),
+                "",
+                "### 目标对齐",
+                "",
+                "- 主目标：在 leakage-free retrieval 上超过或至少追平基线，同时保持 AMHT 的稀疏、内存高效、近 `router_ratio ~ 0.1` 的设计约束。",
+                f"- 当前状态：{zh_goal_status}",
+                "- 设计约束：保持模型“有意义地属于 AMHT”，不要为了追基线而退化成 dense full-sequence attention。",
+                "",
+                "### 下一步顺序",
+                "",
+                *zh_next_steps,
                 "",
             ]
         )
