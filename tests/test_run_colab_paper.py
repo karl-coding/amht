@@ -1,6 +1,7 @@
+import sys
 import unittest
 
-from scripts.run_colab_paper import MODEL_SPECS, PRESETS, deep_merge_dict
+from scripts.run_colab_paper import MODEL_SPECS, PRESETS, deep_merge_dict, run_command
 
 
 class RunColabPaperTests(unittest.TestCase):
@@ -51,6 +52,13 @@ class RunColabPaperTests(unittest.TestCase):
         self.assertEqual(merged["evaluation"]["benchmark_steps"], 1)
         self.assertEqual(merged["evaluation"]["niah"]["batch_size"], 1)
         self.assertEqual(merged["evaluation"]["niah"]["seq_len"], 32768)
+
+    def test_run_command_returns_false_when_continue_on_error_is_enabled(self) -> None:
+        ok = run_command(
+            [sys.executable, "-c", "import sys; sys.exit(7)"],
+            continue_on_error=True,
+        )
+        self.assertFalse(ok)
 
 
 if __name__ == "__main__":

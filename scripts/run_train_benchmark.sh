@@ -52,6 +52,7 @@ fi
   --preset "$PRESET" \
   --device "$DEVICE" \
   --outdir "$OUTDIR" \
+  --continue-on-error \
   --skip-figures \
   "${ARGS[@]}"
 

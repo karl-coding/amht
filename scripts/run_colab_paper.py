@@ -1380,6 +1380,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--skip-figures", action="store_true", help="Skip figure generation and produce tables/summary only")
     parser.add_argument("--force", action="store_true", help="Re-run even when outputs already exist")
     parser.add_argument(
+        "--continue-on-error",
+        action="store_true",
+        help="Keep running remaining models and seeds even if one train/eval command fails",
+    )
+    parser.add_argument(
         "--paper-assets-dir",
         default=None,
         help="Optional directory to copy generated figures and tables into for paper builds",
@@ -1428,9 +1433,16 @@ def resolve_steps(model_key: str, config_path: Path, scale: float, overrides: di
     return max(1, int(math.ceil(base_steps * scale)))
 
 
-def run_command(cmd: list[str]) -> None:
+def run_command(cmd: list[str], *, continue_on_error: bool = False) -> bool:
     print("$", " ".join(cmd), flush=True)
-    subprocess.run(cmd, cwd=ROOT, check=True)
+    try:
+        subprocess.run(cmd, cwd=ROOT, check=True)
+    except subprocess.CalledProcessError as exc:
+        if continue_on_error:
+            warn(f"command_failed exit={exc.returncode} cmd={' '.join(cmd)}")
+            return False
+        raise
+    return True
 
 
 def warn(message: str) -> None:
@@ -2161,7 +2173,9 @@ def main() -> None:
                         "--checkpoint-out",
                         str(checkpoint_path),
                     ]
-                    run_command(train_cmd)
+                    train_ok = run_command(train_cmd, continue_on_error=args.continue_on_error)
+                    if not train_ok:
+                        continue
 
                 if not args.skip_eval and (args.force or not eval_json_path.exists()):
                     eval_config_ref = spec.config
@@ -2196,7 +2210,7 @@ def main() -> None:
                     ]
                     if niah_seq_len is not None:
                         eval_cmd.extend(["--niah-seq-len", str(niah_seq_len)])
-                    run_command(eval_cmd)
+                    run_command(eval_cmd, continue_on_error=args.continue_on_error)
 
     if args.skip_report:
         return
@@ -2208,7 +2222,7 @@ def main() -> None:
             train_log_path = run_dir / "train.jsonl"
             eval_json_path = run_dir / "eval.json"
             if not eval_json_path.exists():
-                if args.skip_eval:
+                if args.skip_eval or args.continue_on_error:
                     warn(f"missing_eval_json={eval_json_path}")
                     continue
                 raise SystemExit(f"Missing eval JSON: {eval_json_path}")
@@ -2221,11 +2235,11 @@ def main() -> None:
                     if not train_run_is_valid(train_final):
                         warn(f"skipping_failed_train_run={run_dir}")
                         continue
-                elif not args.skip_train:
+                elif not args.skip_train and not args.continue_on_error:
                     raise SystemExit(f"Empty train log: {train_log_path}")
                 else:
                     warn(f"empty_train_log={train_log_path}")
-            elif not args.skip_train:
+            elif not args.skip_train and not args.continue_on_error:
                 raise SystemExit(f"Missing train log: {train_log_path}")
             else:
                 warn(f"missing_train_log={train_log_path}")
