@@ -16,8 +16,8 @@ model:
   router_expand_mode: expand
   router_straight_through_scores: true
   router_straight_through_temperature: 0.06
-  router_straight_through_scale: 0.20
-  router_straight_through_input_clip: 5.0
+  router_straight_through_scale: 0.12
+  router_straight_through_input_clip: 4.0
   ssm_impl: selective
   ssm_groups: 4
   ssm_state_size: 96
@@ -31,7 +31,7 @@ training:
   batch_size: 1
   micro_batch_size: 1
   steps: 200
-  lr: 0.00025
+  lr: 0.0002
   weight_decay: 0.01
   grad_clip: 1.0
   max_non_finite_batches: 12
@@ -43,9 +43,9 @@ loss:
   main_weight: 1.0
   router_weight: 1.0
   router_mean_target: 0.1
-  router_mean_weight: 0.0
-  router_score_margin: 0.05
-  router_score_weight: 6.0
+  router_mean_weight: 0.1
+  router_score_margin: 0.03
+  router_score_weight: 4.0
 
 data:
   dataset_type: retrieval
