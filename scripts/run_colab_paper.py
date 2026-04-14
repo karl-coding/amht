@@ -491,6 +491,50 @@ def materialize_eval_config(base_config_path: Path, overrides: dict, output_path
 
 
 PRESETS = {
+    "stage2_round19_content_path_t4_long_stability_validate": {
+        "models": [
+            "amht_v4_stage2_round19_content_path",
+            "transformer_v4_stage2_round18_content_retrieval_baseline",
+            "mamba3_hybrid_v4_stage2_round18_content_retrieval_baseline",
+        ],
+        "seeds": [42, 43, 44],
+        "seq_len": 16384,
+        "steps_scale": 8.0,
+        "warmup_steps": 1,
+        "benchmark_steps": 1,
+        "eval_task": "all",
+        "niah_seq_len": 16384,
+        "eval_config_overrides": {
+            "evaluation": {
+                "niah": {
+                    "batch_size": 1,
+                    "repeats": 2,
+                },
+            },
+        },
+    },
+    "stage2_round19_content_path_t4_long_stability": {
+        "models": [
+            "amht_v4_stage2_round19_content_path",
+            "transformer_v4_stage2_round18_content_retrieval_baseline",
+            "mamba3_hybrid_v4_stage2_round18_content_retrieval_baseline",
+        ],
+        "seeds": [42],
+        "seq_len": 16384,
+        "steps_scale": 8.0,
+        "warmup_steps": 1,
+        "benchmark_steps": 1,
+        "eval_task": "all",
+        "niah_seq_len": 16384,
+        "eval_config_overrides": {
+            "evaluation": {
+                "niah": {
+                    "batch_size": 1,
+                    "repeats": 2,
+                },
+            },
+        },
+    },
     "stage2_round19_content_path_t4_validate": {
         "models": [
             "amht_v4_stage2_round19_content_path",
@@ -535,7 +579,7 @@ PRESETS = {
             },
         },
     },
-    "stage2_round19_content_path_validate": {
+    "stage2_round19_content_path_long_stability_validate": {
         "models": [
             "amht_v4_stage2_round19_content_path",
             "transformer_v4_stage2_round18_content_retrieval_baseline",
@@ -549,7 +593,7 @@ PRESETS = {
         "eval_task": "all",
         "niah_seq_len": 32768,
     },
-    "stage2_round19_content_path": {
+    "stage2_round19_content_path_long_stability": {
         "models": [
             "amht_v4_stage2_round19_content_path",
             "transformer_v4_stage2_round18_content_retrieval_baseline",
@@ -558,6 +602,34 @@ PRESETS = {
         "seeds": [42],
         "seq_len": 16384,
         "steps_scale": 8.0,
+        "warmup_steps": 1,
+        "benchmark_steps": 2,
+        "eval_task": "all",
+        "niah_seq_len": 32768,
+    },
+    "stage2_round19_content_path_validate": {
+        "models": [
+            "amht_v4_stage2_round19_content_path",
+            "transformer_v4_stage2_round18_content_retrieval_baseline",
+            "mamba3_hybrid_v4_stage2_round18_content_retrieval_baseline",
+        ],
+        "seeds": [42, 43, 44],
+        "seq_len": 16384,
+        "steps_scale": 4.0,
+        "warmup_steps": 1,
+        "benchmark_steps": 2,
+        "eval_task": "all",
+        "niah_seq_len": 32768,
+    },
+    "stage2_round19_content_path": {
+        "models": [
+            "amht_v4_stage2_round19_content_path",
+            "transformer_v4_stage2_round18_content_retrieval_baseline",
+            "mamba3_hybrid_v4_stage2_round18_content_retrieval_baseline",
+        ],
+        "seeds": [42],
+        "seq_len": 16384,
+        "steps_scale": 4.0,
         "warmup_steps": 1,
         "benchmark_steps": 2,
         "eval_task": "all",

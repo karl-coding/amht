@@ -9,6 +9,15 @@ class RunColabPaperTests(unittest.TestCase):
         self.assertIn("amht_v4_stage2_round19_content_path", MODEL_SPECS)
         self.assertIn("stage2_round19_content_path", PRESETS)
         self.assertIn("stage2_round19_content_path_t4", PRESETS)
+        self.assertIn("stage2_round19_content_path_validate", PRESETS)
+        self.assertIn("stage2_round19_content_path_long_stability", PRESETS)
+        self.assertIn("stage2_round19_content_path_long_stability_validate", PRESETS)
+        self.assertIn("stage2_round19_content_path_t4_long_stability", PRESETS)
+        self.assertIn("stage2_round19_content_path_t4_long_stability_validate", PRESETS)
+        self.assertEqual(PRESETS["stage2_round19_content_path"]["steps_scale"], 4.0)
+        self.assertEqual(PRESETS["stage2_round19_content_path_validate"]["steps_scale"], 4.0)
+        self.assertEqual(PRESETS["stage2_round19_content_path_long_stability"]["steps_scale"], 8.0)
+        self.assertEqual(PRESETS["stage2_round19_content_path_long_stability_validate"]["steps_scale"], 8.0)
 
     def test_round18_content_retrieval_presets_and_models_are_registered(self) -> None:
         self.assertIn("amht_v4_stage2_round18_content_retrieval", MODEL_SPECS)
