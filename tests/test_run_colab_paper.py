@@ -6,18 +6,23 @@ from scripts.run_colab_paper import MODEL_SPECS, PRESETS, deep_merge_dict, run_c
 
 class RunColabPaperTests(unittest.TestCase):
     def test_round19_content_path_presets_and_models_are_registered(self) -> None:
+        self.assertIn("amht_v4_stage2_round19_content_path_long_stability_retry", MODEL_SPECS)
         self.assertIn("amht_v4_stage2_round19_content_path", MODEL_SPECS)
         self.assertIn("stage2_round19_content_path", PRESETS)
         self.assertIn("stage2_round19_content_path_t4", PRESETS)
         self.assertIn("stage2_round19_content_path_validate", PRESETS)
         self.assertIn("stage2_round19_content_path_long_stability", PRESETS)
         self.assertIn("stage2_round19_content_path_long_stability_validate", PRESETS)
+        self.assertIn("stage2_round19_content_path_long_stability_retry", PRESETS)
+        self.assertIn("stage2_round19_content_path_long_stability_retry_validate", PRESETS)
         self.assertIn("stage2_round19_content_path_t4_long_stability", PRESETS)
         self.assertIn("stage2_round19_content_path_t4_long_stability_validate", PRESETS)
         self.assertEqual(PRESETS["stage2_round19_content_path"]["steps_scale"], 4.0)
         self.assertEqual(PRESETS["stage2_round19_content_path_validate"]["steps_scale"], 4.0)
         self.assertEqual(PRESETS["stage2_round19_content_path_long_stability"]["steps_scale"], 8.0)
         self.assertEqual(PRESETS["stage2_round19_content_path_long_stability_validate"]["steps_scale"], 8.0)
+        self.assertEqual(PRESETS["stage2_round19_content_path_long_stability_retry"]["steps_scale"], 8.0)
+        self.assertEqual(PRESETS["stage2_round19_content_path_long_stability_retry_validate"]["steps_scale"], 8.0)
 
     def test_round18_content_retrieval_presets_and_models_are_registered(self) -> None:
         self.assertIn("amht_v4_stage2_round18_content_retrieval", MODEL_SPECS)

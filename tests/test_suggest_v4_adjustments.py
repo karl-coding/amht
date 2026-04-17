@@ -415,11 +415,12 @@ class SuggestV4AdjustmentsTests(unittest.TestCase):
         self.assertIn("Run `stage2_round19_content_path_validate`", note)
         self.assertIn("`800-step` reproducibility check", note)
         self.assertIn("run `stage2_round19_content_path_long_stability` next", note)
-        self.assertIn("If long-stability fails, treat it as an optimization-stability problem", note)
+        self.assertIn("run `stage2_round19_content_path_long_stability_retry`", note)
         self.assertIn("## 中文结论（自动生成）", note)
         self.assertIn("### Round19 结论", note)
         self.assertIn("先运行 `stage2_round19_content_path_validate`", note)
         self.assertIn("再运行 `stage2_round19_content_path_long_stability`", note)
+        self.assertIn("先运行 `stage2_round19_content_path_long_stability_retry`", note)
 
     def test_round19_content_path_missing_eval_reports_amht_failure_not_stage1_fallback(self) -> None:
         summary = {
@@ -450,6 +451,7 @@ class SuggestV4AdjustmentsTests(unittest.TestCase):
         self.assertIn("## AMHT Status", note)
         self.assertIn("did not produce usable eval metrics", note)
         self.assertIn("training or evaluation failure on the AMHT side", note)
+        self.assertIn("rerun `stage2_round19_content_path_long_stability_retry`", note)
         self.assertNotIn("No AMHT model found in summary.", note)
         self.assertNotIn("# Stage 1 Adjustment Note", note)
 

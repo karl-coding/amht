@@ -63,6 +63,7 @@ def amht_candidates(summary: dict) -> list[str]:
     preferred_order = [
         key
         for key in (
+            "amht_v4_stage2_round19_content_path_long_stability_retry",
             "amht_v4_stage2_round19_content_path",
             "amht_v4_stage2_round18_content_retrieval",
             "amht_v4_stage2_round17_state_memory_diag",
@@ -550,7 +551,7 @@ def build_note(summary: dict) -> str:
                     "Recommendation:",
                     "- For `stage2_round19_content_path`, read this outcome as a training or evaluation failure on the AMHT side, not as evidence that the baselines won the comparison.",
                     "- Keep the `800-step` reproducibility check separate from the `1600-step` long-stability run. If only the longer run fails, classify it as an optimization-stability problem.",
-                    "- Fix the AMHT stability issue first, then rerun the same preset before updating any retrieval-quality claim.",
+                    "- Fix the AMHT stability issue first, then rerun `stage2_round19_content_path_long_stability_retry` before updating any retrieval-quality claim.",
                     "",
                 ]
             )
@@ -972,7 +973,7 @@ def build_note(summary: dict) -> str:
             [
                 "1. Run `stage2_round19_content_path_validate` first as the same-budget `800-step` reproducibility check before making any new architectural change.",
                 "2. If `800-step` parity holds, run `stage2_round19_content_path_long_stability` next to test whether the same configuration stays stable at `1600 steps`.",
-                "3. If long-stability fails, treat it as an optimization-stability problem and tune only training stability knobs before reopening any architecture axis.",
+                "3. If long-stability fails, treat it as an optimization-stability problem and run `stage2_round19_content_path_long_stability_retry` before reopening any architecture axis.",
                 "4. If AMHT is still behind on corrected retrieval at `800 steps`, keep the SSM path fixed and continue only the content-path sweep: `block_size`, `latent_tokens`, `router_score_margin`, `router_score_weight`, and `router_feature_sources`.",
                 "5. Only after corrected retrieval reaches parity and long-stability is clean should you open a Mamba-inspired recurrent sweep with `ssm_state_size` and then `ssm_conv_kernel`.",
                 "6. If the content-path sweep still loses on leakage-free retrieval, stop making a retrieval-specific AMHT claim and revisit the paper framing.",
@@ -1189,7 +1190,7 @@ def build_note(summary: dict) -> str:
             [
                 "1. 先运行 `stage2_round19_content_path_validate`，把它作为同预算的 `800-step` 复现验证，在不改架构的前提下确认 parity 是否可复现。",
                 "2. 如果 `800-step` parity 成立，再运行 `stage2_round19_content_path_long_stability`，单独检查同一配置在 `1600 steps` 下是否仍然稳定。",
-                "3. 如果 long-stability 失败，把问题归类为训练稳定性问题，只调优化稳定性相关旋钮，不要立刻重开新的架构轴。",
+                "3. 如果 long-stability 失败，把问题归类为训练稳定性问题，并先运行 `stage2_round19_content_path_long_stability_retry`，不要立刻重开新的架构轴。",
                 "4. 如果 corrected retrieval 在 `800 steps` 下仍落后，只继续做 content-path 单轴搜索：`block_size`、`latent_tokens`、`router_score_margin`、`router_score_weight`、`router_feature_sources`。",
                 "5. 只有在 retrieval 达到 parity 且 long-stability 也通过后，才开启 Mamba-inspired recurrent sweep，优先顺序是 `ssm_state_size`，然后才是 `ssm_conv_kernel`。",
                 "6. 如果 content-path 方向最终仍无法稳定赢过 baseline，就停止 retrieval-specific AMHT claim，回到更保守的 paper framing。",

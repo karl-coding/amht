@@ -35,6 +35,13 @@ class ModelSpec:
 
 
 MODEL_SPECS = {
+    "amht_v4_stage2_round19_content_path_long_stability_retry": ModelSpec(
+        key="amht_v4_stage2_round19_content_path_long_stability_retry",
+        label="AMHT-V4-Stage2-R19-ContentPath-StabilityRetry",
+        config="train/config_amht_v4_stage2_round19_content_path_long_stability_retry.yaml",
+        color="#14532d",
+        marker="H",
+    ),
     "amht_v4_stage2_round19_content_path": ModelSpec(
         key="amht_v4_stage2_round19_content_path",
         label="AMHT-V4-Stage2-R19-ContentPath",
@@ -593,9 +600,37 @@ PRESETS = {
         "eval_task": "all",
         "niah_seq_len": 32768,
     },
+    "stage2_round19_content_path_long_stability_retry_validate": {
+        "models": [
+            "amht_v4_stage2_round19_content_path_long_stability_retry",
+            "transformer_v4_stage2_round18_content_retrieval_baseline",
+            "mamba3_hybrid_v4_stage2_round18_content_retrieval_baseline",
+        ],
+        "seeds": [42, 43, 44],
+        "seq_len": 16384,
+        "steps_scale": 8.0,
+        "warmup_steps": 1,
+        "benchmark_steps": 2,
+        "eval_task": "all",
+        "niah_seq_len": 32768,
+    },
     "stage2_round19_content_path_long_stability": {
         "models": [
             "amht_v4_stage2_round19_content_path",
+            "transformer_v4_stage2_round18_content_retrieval_baseline",
+            "mamba3_hybrid_v4_stage2_round18_content_retrieval_baseline",
+        ],
+        "seeds": [42],
+        "seq_len": 16384,
+        "steps_scale": 8.0,
+        "warmup_steps": 1,
+        "benchmark_steps": 2,
+        "eval_task": "all",
+        "niah_seq_len": 32768,
+    },
+    "stage2_round19_content_path_long_stability_retry": {
+        "models": [
+            "amht_v4_stage2_round19_content_path_long_stability_retry",
             "transformer_v4_stage2_round18_content_retrieval_baseline",
             "mamba3_hybrid_v4_stage2_round18_content_retrieval_baseline",
         ],
