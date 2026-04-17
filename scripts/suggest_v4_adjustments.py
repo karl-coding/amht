@@ -58,7 +58,7 @@ def fmt(value: float | None, digits: int = 4) -> str:
     return f"{value:.{digits}f}"
 
 
-def pick_best_amht(summary: dict) -> str | None:
+def amht_candidates(summary: dict) -> list[str]:
     models = summary.get("models", {})
     preferred_order = [
         key
@@ -108,6 +108,16 @@ def pick_best_amht(summary: dict) -> str | None:
             continue
         seen.add(key)
         candidates.append(key)
+    return candidates
+
+
+def pick_present_amht(summary: dict) -> str | None:
+    candidates = amht_candidates(summary)
+    return candidates[0] if candidates else None
+
+
+def pick_best_amht(summary: dict) -> str | None:
+    candidates = amht_candidates(summary)
     candidates = [
         key
         for key in candidates
@@ -139,6 +149,8 @@ def pick_best_amht(summary: dict) -> str | None:
 def build_note(summary: dict) -> str:
     models = summary.get("models", {})
     best_amht = pick_best_amht(summary)
+    present_amht = pick_present_amht(summary)
+    active_amht = best_amht or present_amht
     quality_tie_tolerance = 0.02
     round13_validation_complete = any(
         key in models and has_variation(summary, key)
@@ -148,24 +160,24 @@ def build_note(summary: dict) -> str:
             "mamba3_hybrid_v4_stage2_round13_baseline",
         )
     )
-    diagnostic_mode = best_amht is not None and (
-        "state_tracking_diag" in best_amht or "state_memory_diag" in best_amht
+    diagnostic_mode = active_amht is not None and (
+        "state_tracking_diag" in active_amht or "state_memory_diag" in active_amht
     )
-    content_path_mode = best_amht is not None and "stage2_round19_content_path" in best_amht
-    content_retrieval_mode = best_amht is not None and any(
-        tag in best_amht for tag in ("stage2_round18_content_retrieval", "stage2_round19_content_path")
+    content_path_mode = active_amht is not None and "stage2_round19_content_path" in active_amht
+    content_retrieval_mode = active_amht is not None and any(
+        tag in active_amht for tag in ("stage2_round18_content_retrieval", "stage2_round19_content_path")
     )
-    state_memory_diag_mode = best_amht is not None and "state_memory_diag" in best_amht
+    state_memory_diag_mode = active_amht is not None and "state_memory_diag" in active_amht
     validated_stage2_mode = (
-        best_amht is not None and "stage2_round13" in best_amht and round13_validation_complete
+        active_amht is not None and "stage2_round13" in active_amht and round13_validation_complete
     )
     validation_mode = (
-        best_amht is not None and "stage2_round13" in best_amht and not round13_validation_complete
+        active_amht is not None and "stage2_round13" in active_amht and not round13_validation_complete
     )
-    post_budget_mode = best_amht is not None and "stage2_round10" in best_amht
-    state_memory_mode = best_amht is not None and "stage2_round16" in best_amht
-    stable_mixed_mode = best_amht is not None and any(
-        tag in best_amht
+    post_budget_mode = active_amht is not None and "stage2_round10" in active_amht
+    state_memory_mode = active_amht is not None and "stage2_round16" in active_amht
+    stable_mixed_mode = active_amht is not None and any(
+        tag in active_amht
         for tag in (
             "stage2_round16",
             "stage2_round13",
@@ -517,7 +529,39 @@ def build_note(summary: dict) -> str:
     ]
 
     if best_amht is None:
-        lines.append("No AMHT model found in summary.")
+        if present_amht is None:
+            lines.append("No AMHT model found in summary.")
+            return "\n".join(lines) + "\n"
+
+        present_label = models.get(present_amht, {}).get("label", present_amht)
+        lines.extend(
+            [
+                "## AMHT Status",
+                "",
+                f"- Model: `{present_label}`",
+                "- The AMHT run is present in the summary bundle, but it did not produce usable eval metrics.",
+                "- Treat this as an AMHT run failure or missing `eval.json`, not as a valid quality comparison against the baselines.",
+                "",
+            ]
+        )
+        if content_path_mode:
+            lines.extend(
+                [
+                    "Recommendation:",
+                    "- For `stage2_round19_content_path`, read this outcome as a training or evaluation failure on the AMHT side, not as evidence that the baselines won the comparison.",
+                    "- Keep the `800-step` reproducibility check separate from the `1600-step` long-stability run. If only the longer run fails, classify it as an optimization-stability problem.",
+                    "- Fix the AMHT stability issue first, then rerun the same preset before updating any retrieval-quality claim.",
+                    "",
+                ]
+            )
+        else:
+            lines.extend(
+                [
+                    "Recommendation:",
+                    "- Fix the missing or failed AMHT run first, then rerun the same preset before reading architecture conclusions from this report.",
+                    "",
+                ]
+            )
         return "\n".join(lines) + "\n"
 
     best_label = models[best_amht]["label"]

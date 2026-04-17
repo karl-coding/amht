@@ -421,6 +421,38 @@ class SuggestV4AdjustmentsTests(unittest.TestCase):
         self.assertIn("先运行 `stage2_round19_content_path_validate`", note)
         self.assertIn("再运行 `stage2_round19_content_path_long_stability`", note)
 
+    def test_round19_content_path_missing_eval_reports_amht_failure_not_stage1_fallback(self) -> None:
+        summary = {
+            "models": {
+                "amht_v4_stage2_round19_content_path": {
+                    "label": "AMHT-V4-Stage2-R19-ContentPath",
+                },
+                "transformer_v4_stage2_round18_content_retrieval_baseline": {
+                    "label": "Transformer-ContentRetrieval",
+                    "niah": {"mean_accuracy": {"mean": 0.10, "std": 0.0}},
+                    "state_tracking": {"mean_accuracy": {"mean": 0.0, "std": 0.0}},
+                    "throughput": {"tokens_per_second": {"mean": 55000.0, "std": 0.0}},
+                },
+                "mamba3_hybrid_v4_stage2_round18_content_retrieval_baseline": {
+                    "label": "Mamba-ContentRetrieval",
+                    "niah": {"mean_accuracy": {"mean": 0.12, "std": 0.0}},
+                    "state_tracking": {"mean_accuracy": {"mean": 0.0, "std": 0.0}},
+                    "throughput": {"tokens_per_second": {"mean": 60000.0, "std": 0.0}},
+                },
+            }
+        }
+
+        best = MODULE.pick_best_amht(summary)
+        note = MODULE.build_note(summary)
+
+        self.assertIsNone(best)
+        self.assertIn("# Stage 2 Adjustment Note", note)
+        self.assertIn("## AMHT Status", note)
+        self.assertIn("did not produce usable eval metrics", note)
+        self.assertIn("training or evaluation failure on the AMHT side", note)
+        self.assertNotIn("No AMHT model found in summary.", note)
+        self.assertNotIn("# Stage 1 Adjustment Note", note)
+
 
 if __name__ == "__main__":
     unittest.main()
