@@ -455,6 +455,81 @@ class SuggestV4AdjustmentsTests(unittest.TestCase):
         self.assertNotIn("No AMHT model found in summary.", note)
         self.assertNotIn("# Stage 1 Adjustment Note", note)
 
+    def test_round19_content_path_retry_single_seed_points_to_retry_validate(self) -> None:
+        summary = {
+            "models": {
+                "amht_v4_stage2_round19_content_path_long_stability_retry": {
+                    "label": "AMHT-V4-Stage2-R19-ContentPath-StabilityRetry",
+                    "niah": {"mean_accuracy": {"mean": 0.0178, "std": 0.0}},
+                    "state_tracking": {"mean_accuracy": {"mean": 0.0, "std": 0.0}},
+                    "throughput": {"tokens_per_second": {"mean": 70069.91, "std": 0.0}},
+                },
+                "transformer_v4_stage2_round18_content_retrieval_baseline": {
+                    "label": "Transformer-ContentRetrieval",
+                    "niah": {"mean_accuracy": {"mean": 0.0089, "std": 0.0}},
+                    "state_tracking": {"mean_accuracy": {"mean": 0.0, "std": 0.0}},
+                    "throughput": {"tokens_per_second": {"mean": 53095.49, "std": 0.0}},
+                },
+                "mamba3_hybrid_v4_stage2_round18_content_retrieval_baseline": {
+                    "label": "Mamba-ContentRetrieval",
+                    "niah": {"mean_accuracy": {"mean": 0.0089, "std": 0.0}},
+                    "state_tracking": {"mean_accuracy": {"mean": 0.0, "std": 0.0}},
+                    "throughput": {"tokens_per_second": {"mean": 58729.63, "std": 0.0}},
+                },
+            }
+        }
+
+        best = MODULE.pick_best_amht(summary)
+        note = MODULE.build_note(summary)
+
+        self.assertEqual(best, "amht_v4_stage2_round19_content_path_long_stability_retry")
+        self.assertIn("Focus on validation next", note)
+        self.assertIn("Run `stage2_round19_content_path_long_stability_retry_validate` next", note)
+        self.assertIn(
+            "freeze `stage2_round19_content_path_long_stability_retry` as the validated AMHT reference",
+            note,
+        )
+        self.assertNotIn("Run `stage2_round19_content_path_validate` first", note)
+        self.assertIn("先运行 `stage2_round19_content_path_long_stability_retry_validate`", note)
+        self.assertNotIn("先运行 `stage2_round19_content_path_validate`", note)
+
+    def test_round19_content_path_retry_validated_freezes_content_axis(self) -> None:
+        summary = {
+            "models": {
+                "amht_v4_stage2_round19_content_path_long_stability_retry": {
+                    "label": "AMHT-V4-Stage2-R19-ContentPath-StabilityRetry",
+                    "niah": {"mean_accuracy": {"mean": 0.0178, "std": 0.003}},
+                    "state_tracking": {"mean_accuracy": {"mean": 0.0, "std": 0.0}},
+                    "throughput": {"tokens_per_second": {"mean": 70069.91, "std": 850.0}},
+                },
+                "transformer_v4_stage2_round18_content_retrieval_baseline": {
+                    "label": "Transformer-ContentRetrieval",
+                    "niah": {"mean_accuracy": {"mean": 0.0089, "std": 0.0}},
+                    "state_tracking": {"mean_accuracy": {"mean": 0.0, "std": 0.0}},
+                    "throughput": {"tokens_per_second": {"mean": 53095.49, "std": 0.0}},
+                },
+                "mamba3_hybrid_v4_stage2_round18_content_retrieval_baseline": {
+                    "label": "Mamba-ContentRetrieval",
+                    "niah": {"mean_accuracy": {"mean": 0.0089, "std": 0.0}},
+                    "state_tracking": {"mean_accuracy": {"mean": 0.0, "std": 0.0}},
+                    "throughput": {"tokens_per_second": {"mean": 58729.63, "std": 0.0}},
+                },
+            }
+        }
+
+        best = MODULE.pick_best_amht(summary)
+        note = MODULE.build_note(summary)
+
+        self.assertEqual(best, "amht_v4_stage2_round19_content_path_long_stability_retry")
+        self.assertIn("Validation is complete", note)
+        self.assertIn(
+            "Freeze `stage2_round19_content_path_long_stability_retry` as the validated AMHT reference",
+            note,
+        )
+        self.assertIn("open a Mamba-inspired recurrent sweep", note)
+        self.assertNotIn("Run `stage2_round19_content_path_long_stability_retry_validate` next", note)
+        self.assertIn("先把 `stage2_round19_content_path_long_stability_retry` 冻结", note)
+
 
 if __name__ == "__main__":
     unittest.main()

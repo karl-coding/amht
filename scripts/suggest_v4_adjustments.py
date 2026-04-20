@@ -165,6 +165,12 @@ def build_note(summary: dict) -> str:
         "state_tracking_diag" in active_amht or "state_memory_diag" in active_amht
     )
     content_path_mode = active_amht is not None and "stage2_round19_content_path" in active_amht
+    content_path_retry_mode = (
+        active_amht is not None and "stage2_round19_content_path_long_stability_retry" in active_amht
+    )
+    content_path_retry_validated = (
+        content_path_retry_mode and active_amht is not None and has_variation(summary, active_amht)
+    )
     content_retrieval_mode = active_amht is not None and any(
         tag in active_amht for tag in ("stage2_round18_content_retrieval", "stage2_round19_content_path")
     )
@@ -241,8 +247,15 @@ def build_note(summary: dict) -> str:
             ),
             None,
         )
-        intro = "This round keeps the corrected retrieval benchmark fixed and tunes only the AMHT content path. The intent is to import Transformer-style lookup discipline before reopening recurrent-capacity changes."
-        favorable_line = "- This content-path sweep is favorable: AMHT improves leakage-free retrieval without giving away its throughput edge."
+        if content_path_retry_validated:
+            intro = "Validation is complete. The long-budget stability-retry configuration is now reproducible, so round19 can serve as the validated AMHT reference before any recurrent-capacity sweep."
+            favorable_line = "- The long-budget stability-retry configuration is now validated as competitive, so do not reopen the content path unless the multi-seed result breaks."
+        elif content_path_retry_mode:
+            intro = "Focus on validation next. The stability-retry configuration completed the long-budget run at `1600 steps`, so do not open another architecture axis until it survives extra seeds."
+            favorable_line = "- This long-budget stability-retry run is promising, but it is still a single-seed result and should be validated before more tuning."
+        else:
+            intro = "This round keeps the corrected retrieval benchmark fixed and tunes only the AMHT content path. The intent is to import Transformer-style lookup discipline before reopening recurrent-capacity changes."
+            favorable_line = "- This content-path sweep is favorable: AMHT improves leakage-free retrieval without giving away its throughput edge."
     elif content_retrieval_mode:
         stage_label = "2"
         transformer = next(
@@ -621,7 +634,25 @@ def build_note(summary: dict) -> str:
             "",
         ]
 
-        if content_retrieval_mode:
+        if content_path_retry_validated:
+            block.extend(
+                [
+                    "Recommendation:",
+                    "- The long-budget stability-retry result is now reproduced across seeds and can replace the earlier `800-step` readout as the active AMHT reference.",
+                    "- Freeze `stage2_round19_content_path_long_stability_retry` and only then open a Mamba-inspired recurrent sweep with `ssm_state_size` if an unexplained state or continuation gap still matters.",
+                    "",
+                ]
+            )
+        elif content_path_retry_mode:
+            block.extend(
+                [
+                    "Recommendation:",
+                    "- The long-budget stability-retry run is now the active AMHT reference, but it is still only one seed.",
+                    "- Run `stage2_round19_content_path_long_stability_retry_validate` next before reopening router, memory, or recurrent-capacity tuning.",
+                    "",
+                ]
+            )
+        elif content_retrieval_mode:
             block.extend(
                 [
                     "Recommendation:",
@@ -968,7 +999,28 @@ def build_note(summary: dict) -> str:
             "",
         ]
     )
-    if content_path_mode:
+    if content_path_retry_validated:
+        lines.extend(
+            [
+                "1. Freeze `stage2_round19_content_path_long_stability_retry` as the validated AMHT reference for corrected retrieval.",
+                "2. Keep the content path fixed and only open a Mamba-inspired recurrent sweep if an unexplained state or continuation gap still matters.",
+                "3. If you open that recurrent sweep, test `ssm_state_size` first and then `ssm_conv_kernel`, while keeping sparse routing and dense-attention cost fixed.",
+                "4. If the recurrent sweep still cannot create a meaningful state-sensitive edge, keep the retrieval claim narrow and revisit the paper framing.",
+                "",
+            ]
+        )
+    elif content_path_retry_mode:
+        lines.extend(
+            [
+                "1. Run `stage2_round19_content_path_long_stability_retry_validate` next before making any new architectural change.",
+                "2. If multi-seed retry validation holds, freeze `stage2_round19_content_path_long_stability_retry` as the validated AMHT reference.",
+                "3. Only after that validation is clean should you open a Mamba-inspired recurrent sweep with `ssm_state_size` and then `ssm_conv_kernel`.",
+                "4. If retry validation does not reproduce, keep the SSM path fixed and treat this as a reproducibility or stability problem, not a new architecture opportunity.",
+                "5. If the validated quality edge disappears, keep the claim narrow or drop the retrieval-specific AMHT advantage claim.",
+                "",
+            ]
+        )
+    elif content_path_mode:
         lines.extend(
             [
                 "1. Run `stage2_round19_content_path_validate` first as the same-budget `800-step` reproducibility check before making any new architectural change.",
@@ -1163,7 +1215,21 @@ def build_note(summary: dict) -> str:
         )
 
     if content_retrieval_mode:
-        if quality_deficit:
+        if content_path_retry_validated:
+            zh_round_status = (
+                "当前 round19 stability-retry 已经完成跨 seed 验证。AMHT 在 `1600-step` 长预算下不再只是单次跑通，而是已经成为可复现的 corrected retrieval 参考结果。"
+            )
+            zh_goal_status = (
+                "AMHT 已经从“长程训练会崩”推进到“长预算结果可复现”，因此下一步可以在冻结 content path 的前提下，谨慎评估是否还需要打开 recurrent 方向。"
+            )
+        elif content_path_retry_mode:
+            zh_round_status = (
+                "当前 round19 stability-retry 已经完成 `1600-step` 单 seed 稳定跑通。AMHT 已从“long-budget 会崩”推进到“long-budget 单次可稳定”，但还没有完成跨 seed 复现。"
+            )
+            zh_goal_status = (
+                "AMHT 当前已经基本恢复到与 corrected retrieval 目标一致的状态，但证据仍停留在单 seed 长预算成功，不能直接当作最终定论。"
+            )
+        elif quality_deficit:
             zh_round_status = (
                 "当前 corrected retrieval 轮次已经修复了旧 benchmark 的泄漏问题，但 AMHT 仍未稳定超过基线。现阶段证据只支持“稀疏效率优势”，不支持“retrieval 质量优势”结论。"
             )
@@ -1188,6 +1254,21 @@ def build_note(summary: dict) -> str:
         zh_intro_title = "### Round19 结论" if content_path_mode else "### 修正检索轮次结论"
         zh_next_steps = (
             [
+                "1. 先把 `stage2_round19_content_path_long_stability_retry` 冻结为 corrected retrieval 的已验证 AMHT 参考配置。",
+                "2. 保持 content path 不变，只有在 state 或 continuation 方向仍有未解释差距时，才开启 Mamba-inspired recurrent sweep。",
+                "3. 如果开启 recurrent sweep，优先顺序是 `ssm_state_size`，然后才是 `ssm_conv_kernel`，同时保持稀疏路由和 dense attention 成本不变。",
+                "4. 如果 recurrent sweep 仍不能带来有意义的 state-sensitive 优势，就把 retrieval claim 保持在更窄的范围内，并回到更保守的 paper framing。",
+            ]
+            if content_path_retry_validated
+            else [
+                "1. 先运行 `stage2_round19_content_path_long_stability_retry_validate`，在不改架构的前提下确认 retry 的 `1600-step` 结果是否能跨 seed 复现。",
+                "2. 如果 multi-seed retry validation 成立，就把 `stage2_round19_content_path_long_stability_retry` 冻结为已验证的 AMHT 参考配置。",
+                "3. 只有在这个验证通过后，才开启 Mamba-inspired recurrent sweep，优先顺序是 `ssm_state_size`，然后才是 `ssm_conv_kernel`。",
+                "4. 如果 retry validation 不能复现，就把问题继续归类为稳定性或可复现性问题，不要立刻重开新的架构轴。",
+                "5. 如果验证后质量优势消失，就把 retrieval-specific AMHT claim 收窄，必要时直接放弃该 claim。",
+            ]
+            if content_path_retry_mode
+            else [
                 "1. 先运行 `stage2_round19_content_path_validate`，把它作为同预算的 `800-step` 复现验证，在不改架构的前提下确认 parity 是否可复现。",
                 "2. 如果 `800-step` parity 成立，再运行 `stage2_round19_content_path_long_stability`，单独检查同一配置在 `1600 steps` 下是否仍然稳定。",
                 "3. 如果 long-stability 失败，把问题归类为训练稳定性问题，并先运行 `stage2_round19_content_path_long_stability_retry`，不要立刻重开新的架构轴。",
