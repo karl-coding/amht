@@ -1735,6 +1735,7 @@ def build_summary(
         cases_per_seed = niah_cases_by_seed[0] if niah_cases_by_seed and all(cases == niah_cases_by_seed[0] for cases in niah_cases_by_seed) else None
         summary[key] = {
             "label": MODEL_SPECS[key].label,
+            "completed_runs": len(model_runs),
             "train": {
                 "final_total_loss": {
                     "mean": mean_std(collect_train_metric(model_runs, "total_loss"))[0],

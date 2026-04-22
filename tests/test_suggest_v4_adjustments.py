@@ -457,21 +457,25 @@ class SuggestV4AdjustmentsTests(unittest.TestCase):
 
     def test_round19_content_path_retry_single_seed_points_to_retry_validate(self) -> None:
         summary = {
+            "seed_count": 3,
             "models": {
                 "amht_v4_stage2_round19_content_path_long_stability_retry": {
                     "label": "AMHT-V4-Stage2-R19-ContentPath-StabilityRetry",
+                    "completed_runs": 1,
                     "niah": {"mean_accuracy": {"mean": 0.0178, "std": 0.0}},
                     "state_tracking": {"mean_accuracy": {"mean": 0.0, "std": 0.0}},
                     "throughput": {"tokens_per_second": {"mean": 70069.91, "std": 0.0}},
                 },
                 "transformer_v4_stage2_round18_content_retrieval_baseline": {
                     "label": "Transformer-ContentRetrieval",
+                    "completed_runs": 1,
                     "niah": {"mean_accuracy": {"mean": 0.0089, "std": 0.0}},
                     "state_tracking": {"mean_accuracy": {"mean": 0.0, "std": 0.0}},
                     "throughput": {"tokens_per_second": {"mean": 53095.49, "std": 0.0}},
                 },
                 "mamba3_hybrid_v4_stage2_round18_content_retrieval_baseline": {
                     "label": "Mamba-ContentRetrieval",
+                    "completed_runs": 1,
                     "niah": {"mean_accuracy": {"mean": 0.0089, "std": 0.0}},
                     "state_tracking": {"mean_accuracy": {"mean": 0.0, "std": 0.0}},
                     "throughput": {"tokens_per_second": {"mean": 58729.63, "std": 0.0}},
@@ -495,21 +499,25 @@ class SuggestV4AdjustmentsTests(unittest.TestCase):
 
     def test_round19_content_path_retry_validated_freezes_content_axis(self) -> None:
         summary = {
+            "seed_count": 3,
             "models": {
                 "amht_v4_stage2_round19_content_path_long_stability_retry": {
                     "label": "AMHT-V4-Stage2-R19-ContentPath-StabilityRetry",
+                    "completed_runs": 3,
                     "niah": {"mean_accuracy": {"mean": 0.0178, "std": 0.003}},
                     "state_tracking": {"mean_accuracy": {"mean": 0.0, "std": 0.0}},
                     "throughput": {"tokens_per_second": {"mean": 70069.91, "std": 850.0}},
                 },
                 "transformer_v4_stage2_round18_content_retrieval_baseline": {
                     "label": "Transformer-ContentRetrieval",
+                    "completed_runs": 3,
                     "niah": {"mean_accuracy": {"mean": 0.0089, "std": 0.0}},
                     "state_tracking": {"mean_accuracy": {"mean": 0.0, "std": 0.0}},
                     "throughput": {"tokens_per_second": {"mean": 53095.49, "std": 0.0}},
                 },
                 "mamba3_hybrid_v4_stage2_round18_content_retrieval_baseline": {
                     "label": "Mamba-ContentRetrieval",
+                    "completed_runs": 3,
                     "niah": {"mean_accuracy": {"mean": 0.0089, "std": 0.0}},
                     "state_tracking": {"mean_accuracy": {"mean": 0.0, "std": 0.0}},
                     "throughput": {"tokens_per_second": {"mean": 58729.63, "std": 0.0}},
@@ -529,6 +537,45 @@ class SuggestV4AdjustmentsTests(unittest.TestCase):
         self.assertIn("open a Mamba-inspired recurrent sweep", note)
         self.assertNotIn("Run `stage2_round19_content_path_long_stability_retry_validate` next", note)
         self.assertIn("先把 `stage2_round19_content_path_long_stability_retry` 冻结", note)
+
+    def test_round19_content_path_retry_with_missing_baseline_evals_is_not_marked_complete(self) -> None:
+        summary = {
+            "seed_count": 3,
+            "models": {
+                "amht_v4_stage2_round19_content_path_long_stability_retry": {
+                    "label": "AMHT-V4-Stage2-R19-ContentPath-StabilityRetry",
+                    "completed_runs": 3,
+                    "niah": {"mean_accuracy": {"mean": 0.0149, "std": 0.002}},
+                    "state_tracking": {"mean_accuracy": {"mean": 0.0, "std": 0.0}},
+                    "throughput": {"tokens_per_second": {"mean": 72295.65, "std": 700.0}},
+                },
+                "transformer_v4_stage2_round18_content_retrieval_baseline": {
+                    "label": "Transformer-ContentRetrieval",
+                    "completed_runs": 1,
+                    "niah": {"mean_accuracy": {"mean": 0.0089, "std": 0.0}},
+                    "state_tracking": {"mean_accuracy": {"mean": 0.0, "std": 0.0}},
+                    "throughput": {"tokens_per_second": {"mean": 54628.19, "std": 0.0}},
+                },
+                "mamba3_hybrid_v4_stage2_round18_content_retrieval_baseline": {
+                    "label": "Mamba-ContentRetrieval",
+                    "completed_runs": 0,
+                    "niah": {"mean_accuracy": {"mean": None, "std": None}},
+                    "state_tracking": {"mean_accuracy": {"mean": None, "std": None}},
+                    "throughput": {"tokens_per_second": {"mean": None, "std": None}},
+                },
+            }
+        }
+
+        note = MODULE.build_note(summary)
+
+        self.assertNotIn("Validation is complete", note)
+        self.assertIn("baseline eval set is still incomplete", note)
+        self.assertIn("Complete the missing `Transformer, Mamba-3-inspired hybrid` evals", note)
+        self.assertNotIn(
+            "Freeze `stage2_round19_content_path_long_stability_retry` as the validated AMHT reference",
+            note,
+        )
+        self.assertIn("先补齐 `stage2_round19_content_path_long_stability_retry_validate` 中缺失的 `Transformer, Mamba-3-inspired hybrid` eval", note)
 
 
 if __name__ == "__main__":

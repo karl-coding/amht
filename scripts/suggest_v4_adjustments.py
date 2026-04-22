@@ -52,6 +52,29 @@ def has_variation(summary: dict, model_key: str) -> bool:
     )
 
 
+def summary_seed_count(summary: dict) -> int | None:
+    value = summary.get("seed_count")
+    if isinstance(value, int) and value > 0:
+        return value
+    return None
+
+
+def completed_runs(summary: dict, model_key: str | None) -> int | None:
+    if not model_key:
+        return None
+    value = summary.get("models", {}).get(model_key, {}).get("completed_runs")
+    if isinstance(value, int) and value >= 0:
+        return value
+    return None
+
+
+def has_complete_seed_coverage(summary: dict, model_key: str | None, expected: int | None) -> bool:
+    if expected is None or expected <= 0:
+        return False
+    covered = completed_runs(summary, model_key)
+    return covered is not None and covered >= expected
+
+
 def fmt(value: float | None, digits: int = 4) -> str:
     if value is None:
         return "-"
@@ -152,6 +175,7 @@ def build_note(summary: dict) -> str:
     best_amht = pick_best_amht(summary)
     present_amht = pick_present_amht(summary)
     active_amht = best_amht or present_amht
+    expected_seed_count = summary_seed_count(summary)
     quality_tie_tolerance = 0.02
     round13_validation_complete = any(
         key in models and has_variation(summary, key)
@@ -200,6 +224,9 @@ def build_note(summary: dict) -> str:
             "stage2_round9",
         )
     )
+    content_path_retry_validated = False
+    content_path_retry_amht_reproduced_only = False
+    incomplete_retry_baselines: list[str] = []
 
     if content_path_mode:
         stage_label = "2"
@@ -247,9 +274,27 @@ def build_note(summary: dict) -> str:
             ),
             None,
         )
+        if content_path_retry_mode:
+            amht_seed_complete = has_complete_seed_coverage(summary, active_amht, expected_seed_count)
+            transformer_seed_complete = has_complete_seed_coverage(summary, transformer, expected_seed_count) if transformer else True
+            mamba_seed_complete = has_complete_seed_coverage(summary, mamba_ref, expected_seed_count) if mamba_ref else True
+            if transformer and not transformer_seed_complete:
+                incomplete_retry_baselines.append("Transformer")
+            if mamba_ref and not mamba_seed_complete:
+                incomplete_retry_baselines.append("Mamba-3-inspired hybrid")
+            content_path_retry_validated = (
+                amht_seed_complete
+                and transformer_seed_complete
+                and mamba_seed_complete
+            )
+            content_path_retry_amht_reproduced_only = amht_seed_complete and not content_path_retry_validated
+
         if content_path_retry_validated:
             intro = "Validation is complete. The long-budget stability-retry configuration is now reproducible, so round19 can serve as the validated AMHT reference before any recurrent-capacity sweep."
             favorable_line = "- The long-budget stability-retry configuration is now validated as competitive, so do not reopen the content path unless the multi-seed result breaks."
+        elif content_path_retry_amht_reproduced_only:
+            intro = "AMHT long-budget stability is now reproduced across seeds, but the baseline eval set is still incomplete, so round19 is not fully validated yet."
+            favorable_line = "- The AMHT stability-retry result is reproducible, but you still need the missing baseline evals before freezing this comparison."
         elif content_path_retry_mode:
             intro = "Focus on validation next. The stability-retry configuration completed the long-budget run at `1600 steps`, so do not open another architecture axis until it survives extra seeds."
             favorable_line = "- This long-budget stability-retry run is promising, but it is still a single-seed result and should be validated before more tuning."
@@ -643,6 +688,16 @@ def build_note(summary: dict) -> str:
                     "",
                 ]
             )
+        elif content_path_retry_amht_reproduced_only:
+            missing_labels = ", ".join(incomplete_retry_baselines) if incomplete_retry_baselines else "baseline models"
+            block.extend(
+                [
+                    "Recommendation:",
+                    "- AMHT long-budget stability is now reproduced across seeds, but the baseline eval set is still incomplete.",
+                    f"- Complete the missing `{missing_labels}` evals for this preset before freezing `stage2_round19_content_path_long_stability_retry` or opening any recurrent-capacity sweep.",
+                    "",
+                ]
+            )
         elif content_path_retry_mode:
             block.extend(
                 [
@@ -1009,6 +1064,18 @@ def build_note(summary: dict) -> str:
                 "",
             ]
         )
+    elif content_path_retry_amht_reproduced_only:
+        missing_labels = ", ".join(incomplete_retry_baselines) if incomplete_retry_baselines else "baseline models"
+        lines.extend(
+            [
+                f"1. Complete the missing `{missing_labels}` evals for `stage2_round19_content_path_long_stability_retry_validate` so AMHT and both baselines cover the same seed set.",
+                "2. Rebuild the report; only if the full comparison still holds should you freeze `stage2_round19_content_path_long_stability_retry` as the validated AMHT reference.",
+                "3. Keep the content path fixed until that full baseline comparison is complete.",
+                "4. Only after the full comparison is complete should you consider a Mamba-inspired recurrent sweep with `ssm_state_size` and then `ssm_conv_kernel`.",
+                "5. If the completed comparison weakens the quality edge, keep the retrieval claim narrow or drop the retrieval-specific AMHT advantage claim.",
+                "",
+            ]
+        )
     elif content_path_retry_mode:
         lines.extend(
             [
@@ -1222,6 +1289,13 @@ def build_note(summary: dict) -> str:
             zh_goal_status = (
                 "AMHT 已经从“长程训练会崩”推进到“长预算结果可复现”，因此下一步可以在冻结 content path 的前提下，谨慎评估是否还需要打开 recurrent 方向。"
             )
+        elif content_path_retry_amht_reproduced_only:
+            zh_round_status = (
+                "当前 round19 stability-retry 已经证明 AMHT 自身的 `1600-step` 长预算稳定性可以跨 seed 复现，但 baseline eval 仍未补齐，因此这还不是完整的对比验证。"
+            )
+            zh_goal_status = (
+                "AMHT 已经从“长程训练会崩”推进到“AMHT 自身可稳定复现”，但在 baseline 对比未补齐前，还不能把这一轮直接冻结为完整验证通过。"
+            )
         elif content_path_retry_mode:
             zh_round_status = (
                 "当前 round19 stability-retry 已经完成 `1600-step` 单 seed 稳定跑通。AMHT 已从“long-budget 会崩”推进到“long-budget 单次可稳定”，但还没有完成跨 seed 复现。"
@@ -1260,6 +1334,14 @@ def build_note(summary: dict) -> str:
                 "4. 如果 recurrent sweep 仍不能带来有意义的 state-sensitive 优势，就把 retrieval claim 保持在更窄的范围内，并回到更保守的 paper framing。",
             ]
             if content_path_retry_validated
+            else [
+                f"1. 先补齐 `stage2_round19_content_path_long_stability_retry_validate` 中缺失的 `{', '.join(incomplete_retry_baselines) if incomplete_retry_baselines else 'baseline'}` eval，确保 AMHT 和基线使用相同的 seed 集合。",
+                "2. 重新生成 report；只有在完整对比后优势仍成立，才把 `stage2_round19_content_path_long_stability_retry` 冻结为已验证 AMHT 参考配置。",
+                "3. 在这个完整 baseline 对比补齐之前，保持 content path 不变，不要提前开启 recurrent sweep。",
+                "4. 只有在完整对比补齐之后，才考虑 Mamba-inspired recurrent sweep，优先顺序是 `ssm_state_size`，然后才是 `ssm_conv_kernel`。",
+                "5. 如果补齐后的完整对比削弱了优势，就把 retrieval-specific AMHT claim 收窄，必要时直接放弃该 claim。",
+            ]
+            if content_path_retry_amht_reproduced_only
             else [
                 "1. 先运行 `stage2_round19_content_path_long_stability_retry_validate`，在不改架构的前提下确认 retry 的 `1600-step` 结果是否能跨 seed 复现。",
                 "2. 如果 multi-seed retry validation 成立，就把 `stage2_round19_content_path_long_stability_retry` 冻结为已验证的 AMHT 参考配置。",
